@@ -1,0 +1,40 @@
+import { NextRequest, NextResponse } from "next/server";
+
+const LAMBDA_URL =
+    "https://7oxhafersb.execute-api.ap-southeast-1.amazonaws.com";
+
+export async function GET(req: NextRequest) {
+    try {
+        const authHeader = req.headers.get("authorization");
+
+        const response = await fetch(`${LAMBDA_URL}/onboarding`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: authHeader || "",
+            },
+            body: JSON.stringify({
+                action: "get_current_user",
+            }),
+        });
+
+        const text = await response.text();
+
+        let data;
+
+        try {
+            data = text ? JSON.parse(text) : {};
+        } catch {
+            data = { error: text || "Invalid response from current user server" };
+        }
+
+        return NextResponse.json(data, {
+            status: response.status,
+        });
+    } catch {
+        return NextResponse.json(
+            { error: "Current user server error" },
+            { status: 500 }
+        );
+    }
+}
