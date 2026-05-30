@@ -1,6 +1,6 @@
 "use client";
 
-import RoleSidebar from "@/components/RoleSidebar";
+import RoleSidebar from "@/components/sidebar/RoleSidebar";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
@@ -10,7 +10,6 @@ import {
     ClipboardList,
     LayoutDashboard,
     Settings,
-    ShieldCheck,
     ShoppingCart,
     Sparkles,
     Store,
@@ -25,7 +24,6 @@ type PermissionKey =
     | "pos"
     | "reports"
     | "staff_management"
-    | "staff_roles"
     | "branch_settings";
 
 type MenuItem = {
@@ -113,12 +111,6 @@ export default function ManagerPage() {
                         href: "/manager/staff-management",
                         permission: "staff_management" as PermissionKey,
                         icon: <Users className="h-5 w-5" />,
-                    },
-                    {
-                        label: "Staff Roles",
-                        href: "/manager/staff-roles",
-                        permission: "staff_roles" as PermissionKey,
-                        icon: <ShieldCheck className="h-5 w-5" />,
                     },
                 ],
             },
@@ -288,3 +280,7 @@ function DashboardCard({
         </div>
     );
 }
+
+
+
+

@@ -1,6 +1,6 @@
 "use client";
 
-import RoleSidebar from "@/components/RoleSidebar";
+import RoleSidebar from "@/components/sidebar/RoleSidebar";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -13,7 +13,6 @@ type Permissions = {
     pos: boolean;
     reports: boolean;
     staff_management: boolean;
-    staff_roles: boolean;
     branch_settings: boolean;
 };
 
@@ -40,7 +39,6 @@ const defaultPermissions: Permissions = {
     pos: true,
     reports: false,
     staff_management: false,
-    staff_roles: false,
     branch_settings: false,
 };
 
@@ -326,7 +324,6 @@ export default function BranchesPage() {
                                     <AccessToggle label="Sales / POS" checked={editPermissions.pos} onChange={(checked) => setEditPermissions(prev => ({ ...prev, pos: checked }))} />
                                     <AccessToggle label="Reports" checked={editPermissions.reports} onChange={(checked) => setEditPermissions(prev => ({ ...prev, reports: checked }))} />
                                     <AccessToggle label="Staff Management" checked={editPermissions.staff_management} onChange={(checked) => setEditPermissions(prev => ({ ...prev, staff_management: checked }))} />
-                                    <AccessToggle label="Staff Roles & Permissions" checked={editPermissions.staff_roles} onChange={(checked) => setEditPermissions(prev => ({ ...prev, staff_roles: checked }))} />
                                     <AccessToggle label="Branch Settings" checked={editPermissions.branch_settings} onChange={(checked) => setEditPermissions(prev => ({ ...prev, branch_settings: checked }))} />
                                 </div>
                             </div>
@@ -375,3 +372,4 @@ function AccessToggle({ label, checked, onChange }: { label: string; checked: bo
         </label>
     );
 }
+

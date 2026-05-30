@@ -1,7 +1,7 @@
 "use client";
 
-import RoleSidebar from "@/components/RoleSidebar";
-import RequirePermission from "@/components/RequirePermission";
+import RoleSidebar from "@/components/sidebar/RoleSidebar";
+import RequirePermission from "@/components/permissions/RequirePermission";
 import OwnerDashboard from "@/components/dashboard/OwnerDashboard";
 import ManagerDashboard from "@/components/dashboard/ManagerDashboard";
 import StaffDashboard from "@/components/dashboard/StaffDashboard";
@@ -42,3 +42,4 @@ export default function DashboardPage() {
         </RequirePermission>
     );
 }
+

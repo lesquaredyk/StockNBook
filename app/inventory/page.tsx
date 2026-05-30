@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import RoleSidebar from "@/components/RoleSidebar";
-import RequirePermission from "@/components/RequirePermission";
+import RoleSidebar from "@/components/sidebar/RoleSidebar";
+import RequirePermission from "@/components/permissions/RequirePermission";
 import { useEffect, useMemo, useState } from "react";
 import {
   Search,
@@ -1468,3 +1468,4 @@ export default function InventoryPage() {
       </RequirePermission>
   );
 }
+

@@ -1,6 +1,6 @@
 "use client";
 
-import RoleSidebar from "@/components/RoleSidebar";
+import RoleSidebar from "@/components/sidebar/RoleSidebar";
 import OwnerPackages from "@/components/packages/OwnerPackages";
 import ManagerPackages from "@/components/packages/ManagerPackages";
 import StaffPackages from "@/components/packages/StaffPackages";
@@ -36,3 +36,4 @@ export default function PackagesPage() {
         </div>
     );
 }
+

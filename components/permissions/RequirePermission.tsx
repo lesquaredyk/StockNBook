@@ -113,3 +113,4 @@ export default function RequirePermission({
 
     return <>{children}</>;
 }
+

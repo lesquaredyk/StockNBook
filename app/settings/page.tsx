@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import RoleSidebar from "@/components/RoleSidebar";
-import RequirePermission from "@/components/RequirePermission";
+import RoleSidebar from "@/components/sidebar/RoleSidebar";
+import RequirePermission from "@/components/permissions/RequirePermission";
 import { QRCodeCanvas } from "qrcode.react";
 
 function makeSlug(value: string) {
@@ -339,3 +339,4 @@ export default function SettingsPage() {
         </RequirePermission>
     );
 }
+
