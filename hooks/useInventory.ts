@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type * as React from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import {
     type Branch,
     type Category,
@@ -84,9 +84,15 @@ function getSessionSnapshot() {
 }
 
 function normalizeVariantForSave(v: ProductFormVariant): ProductVariantSave {
+    const variantValues = Object.fromEntries(
+        Object.entries(v.variantValues || {})
+            .map(([key, value]) => [key, String(value || "").trim()])
+            .filter(([, value]) => value.length > 0)
+    );
+
     return {
         ...(v.id ? { id: v.id } : {}),
-        variantValues: v.variantValues,
+        variantValues,
         stock: Number(v.stock || 0),
         alertLevel: Number(v.alertLevel || 0),
         originalPrice: Number(v.originalPrice || 0),
@@ -136,13 +142,19 @@ export function useInventoryController() {
     const [showDeleteProductDialog, setShowDeleteProductDialog] = useState(false);
     const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
-    const [showConfirmProductSaveDialog, setShowConfirmProductSaveDialog] = useState(false);
-    const [pendingProductSave, setPendingProductSave] = useState<PendingProductSave | null>(null);
+    const [showConfirmProductSaveDialog, setShowConfirmProductSaveDialog] =
+        useState(false);
+    const [pendingProductSave, setPendingProductSave] =
+        useState<PendingProductSave | null>(null);
+
+    const [showImportDialog, setShowImportDialog] = useState(false);
+    const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
 
     const isOwner = role === "owner";
     const isBranchUser = role === "manager" || role === "staff";
 
-    async function loadProducts() {
+    const loadProducts = useCallback(async () => {
         const token = sessionStorage.getItem("token");
 
         if (!token) {
@@ -169,13 +181,18 @@ export function useInventoryController() {
             });
 
             const { data } = await safeParseResponse<ProductsApiResponse>(res);
-            setProducts(res.ok && Array.isArray(data.products) ? data.products.map(normalizeProduct) : []);
+
+            setProducts(
+                res.ok && Array.isArray(data.products)
+                    ? data.products.map(normalizeProduct)
+                    : []
+            );
         } catch {
             setProducts([]);
         }
-    }
+    }, [assignedBranchId, isBranchUser, storeId]);
 
-    async function loadCategories() {
+    const loadCategories = useCallback(async () => {
         const token = sessionStorage.getItem("token");
 
         if (!token) {
@@ -199,7 +216,10 @@ export function useInventoryController() {
             const { data } = await safeParseResponse<CategoryApiResponse>(res);
 
             if (!res.ok) {
-                console.warn("Categories fetch failed:", getApiErrorMessage(data, "Failed to fetch categories"));
+                console.warn(
+                    "Categories fetch failed:",
+                    getApiErrorMessage(data, "Failed to fetch categories")
+                );
                 setManualCategories([]);
                 return;
             }
@@ -208,9 +228,9 @@ export function useInventoryController() {
         } catch {
             setManualCategories([]);
         }
-    }
+    }, [storeId]);
 
-    async function loadBranches() {
+    const loadBranches = useCallback(async () => {
         const token = sessionStorage.getItem("token");
 
         if (!token) {
@@ -240,25 +260,15 @@ export function useInventoryController() {
         } catch {
             setBranches([]);
         }
-    }
+    }, []);
 
-    async function refreshAll() {
+    const refreshAll = useCallback(async () => {
         await Promise.all([loadProducts(), loadCategories(), loadBranches()]);
-    }
+    }, [loadBranches, loadCategories, loadProducts]);
 
     useEffect(() => {
-        let cancelled = false;
-
-        async function run() {
-            if (!cancelled) await refreshAll();
-        }
-
-        void run();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [assignedBranchId, isBranchUser, storeId]);
+        void refreshAll();
+    }, [refreshAll]);
 
     const branchGroups = useMemo(() => {
         const groups: Record<string, Product[]> = {};
@@ -351,6 +361,72 @@ export function useInventoryController() {
         setShowForm(true);
     }
 
+    function openImportDialog() {
+        setSelectedImportFile(null);
+        setShowImportDialog(true);
+    }
+
+    function closeImportDialog() {
+        setSelectedImportFile(null);
+        setShowImportDialog(false);
+    }
+
+    async function importProductsFromExcel() {
+        if (!selectedImportFile) {
+            alert("❌ Please select an Excel file.");
+            return;
+        }
+
+        const token = getTokenOrAlert();
+        if (!token) return;
+
+        const targetBranchId = isBranchUser ? assignedBranchId : selectedBranchId;
+
+        if (!targetBranchId) {
+            alert("❌ Please select a branch before importing.");
+            return;
+        }
+
+        if (!storeId) {
+            alert("❌ Missing store ID.");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", selectedImportFile);
+        formData.append("store_id", String(storeId));
+        formData.append("branch_id", String(targetBranchId));
+
+        try {
+            setIsImporting(true);
+
+            const res = await fetch("/api/products/import", {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+                body: formData,
+            });
+
+            const { data } = await safeParseResponse<{ success?: boolean; error?: string }>(res);
+
+            if (!res.ok) {
+                alert(`❌ ${data?.error || "Failed to import products"}`);
+                return;
+            }
+
+            await loadProducts();
+
+            alert("✅ Products imported successfully.");
+            closeImportDialog();
+        } catch (error) {
+            console.error("Import failed:", error);
+            alert("❌ Failed to import products.");
+        } finally {
+            setIsImporting(false);
+        }
+    }
+
     function addVariantRow() {
         setVariants((prev) => [
             ...prev,
@@ -372,7 +448,13 @@ export function useInventoryController() {
         setVariants((prev) =>
             prev.map((variant, i) =>
                 i === index
-                    ? { ...variant, variantValues: { ...variant.variantValues, [key]: value } }
+                    ? {
+                        ...variant,
+                        variantValues: {
+                            ...variant.variantValues,
+                            [key]: value,
+                        },
+                    }
                     : variant
             )
         );
@@ -388,10 +470,21 @@ export function useInventoryController() {
         );
     }
 
-    function handleSubmitProduct(e: React.FormEvent<HTMLFormElement>) {
+    function handleSubmitProduct(e: FormEvent<HTMLFormElement>) {
         e.preventDefault();
 
-        if (!name.trim() || !category.trim()) return;
+        const cleanName = name.trim();
+        const cleanCategory = category.trim();
+
+        if (!cleanName) {
+            alert("❌ Please enter a product name.");
+            return;
+        }
+
+        if (!cleanCategory) {
+            alert("❌ Please select a category first.");
+            return;
+        }
 
         const targetBranchId = isBranchUser ? assignedBranchId : productBranchId;
 
@@ -406,7 +499,25 @@ export function useInventoryController() {
         }
 
         const cleanedVariants = variants.map(normalizeVariantForSave);
+
+        if (hasVariants) {
+            const hasInvalidVariant = cleanedVariants.some((variant) => {
+                const values = Object.values(variant.variantValues || {})
+                    .map((value) => String(value || "").trim())
+                    .filter(Boolean);
+
+                return values.length === 0;
+            });
+
+            if (hasInvalidVariant) {
+                alert("❌ Each variant must have at least one value, like size or color.");
+                return;
+            }
+        }
+
         const variantStock = cleanedVariants.reduce((sum, v) => sum + Number(v.stock || 0), 0);
+        const variantAlert = cleanedVariants.reduce((sum, v) => sum + Number(v.alertLevel || 0), 0);
+        const firstVariant = cleanedVariants[0];
 
         const branchLabel =
             branches.find((b) => String(b.id) === String(targetBranchId))?.branchName ||
@@ -417,12 +528,12 @@ export function useInventoryController() {
             storeId: storeId ? Number(storeId) : null,
             branchId: Number(targetBranchId),
             branchName: branchLabel,
-            name: name.trim(),
-            category: category.trim(),
+            name: cleanName,
+            category: cleanCategory,
             stock: hasVariants ? variantStock : Number(stock || 0),
-            alertLevel: Number(alertLevel || 0),
-            originalPrice: Number(originalPrice || 0),
-            salesPrice: Number(salesPrice || 0),
+            alertLevel: hasVariants ? variantAlert : Number(alertLevel || 0),
+            originalPrice: hasVariants ? Number(firstVariant?.originalPrice || 0) : Number(originalPrice || 0),
+            salesPrice: hasVariants ? Number(firstVariant?.salesPrice || 0) : Number(salesPrice || 0),
             hasVariants,
             variants: hasVariants ? cleanedVariants : [],
         };
@@ -444,26 +555,46 @@ export function useInventoryController() {
         const token = getTokenOrAlert();
         if (!token) return;
 
-        const productData = pendingProductSave.mode === "edit" ? pendingProductSave.after : pendingProductSave.data;
+        const productData =
+            pendingProductSave.mode === "edit" ? pendingProductSave.after : pendingProductSave.data;
 
         if (!productData.branchId) {
             alert("❌ Missing branch for product.");
             return;
         }
 
+        const serializedVariants = (productData.variants || []).map((variant) => ({
+            ...(variant.id ? { id: Number(variant.id) } : {}),
+            variantValues: variant.variantValues || {},
+            variant_values: variant.variantValues || {},
+            stock: Number(variant.stock || 0),
+            alertLevel: Number(variant.alertLevel || 0),
+            alert_level: Number(variant.alertLevel || 0),
+            originalPrice: Number(variant.originalPrice || 0),
+            original_price: Number(variant.originalPrice || 0),
+            salesPrice: Number(variant.salesPrice || 0),
+            sales_price: Number(variant.salesPrice || 0),
+        }));
+
         const payload = {
             action: pendingProductSave.mode === "edit" ? "update_product" : "create_product",
             ...(pendingProductSave.mode === "edit" ? { id: pendingProductSave.editingId } : {}),
             store_id: productData.storeId,
+            storeId: productData.storeId,
             branch_id: Number(productData.branchId),
+            branchId: Number(productData.branchId),
             name: productData.name,
             category: productData.category,
             stock: productData.stock,
+            alertLevel: productData.alertLevel,
             alert_level: productData.alertLevel,
+            originalPrice: productData.originalPrice,
             original_price: productData.originalPrice,
+            salesPrice: productData.salesPrice,
             sales_price: productData.salesPrice,
+            hasVariants: productData.hasVariants,
             has_variants: productData.hasVariants ? 1 : 0,
-            variants: productData.hasVariants ? productData.variants : [],
+            variants: productData.hasVariants ? serializedVariants : [],
         };
 
         try {
@@ -479,6 +610,7 @@ export function useInventoryController() {
             const { data } = await safeParseResponse<ProductsApiResponse>(res);
 
             if (!res.ok) {
+                console.error("Save product failed response:", data);
                 alert(`❌ ${data?.error || "Failed to save product"}`);
                 return;
             }
@@ -490,8 +622,9 @@ export function useInventoryController() {
             clearProductForm();
             setEditingId(null);
             setShowForm(false);
-        } catch {
-            alert("❌ Failed to save product");
+        } catch (error) {
+            console.error("Save product request crashed:", error);
+            alert(error instanceof Error ? `❌ ${error.message}` : "❌ Failed to save product");
         }
     }
 
@@ -508,8 +641,9 @@ export function useInventoryController() {
         setAlertLevel(String(p.alertLevel));
         setOriginalPrice(String(p.originalPrice));
         setSalesPrice(String(p.salesPrice));
-        setHasVariants(Boolean(p.hasVariants));
+        setHasVariants(Boolean(p.hasVariants) || (Array.isArray(p.variants) && p.variants.length > 0));
         setProductBranchId(String(p.branchId || assignedBranchId || ""));
+
         setVariants(
             Array.isArray(p.variants)
                 ? p.variants.map((v) => ({
@@ -522,6 +656,7 @@ export function useInventoryController() {
                 }))
                 : []
         );
+
         setFormMode("product");
         setShowForm(true);
     }
@@ -608,8 +743,11 @@ export function useInventoryController() {
 
             setManualCategories((prev) => {
                 const exists = prev.some(
-                    (c) => c.categoryName.trim().toLowerCase() === created.categoryName.trim().toLowerCase()
+                    (c) =>
+                        c.categoryName.trim().toLowerCase() ===
+                        created.categoryName.trim().toLowerCase()
                 );
+
                 return exists ? prev : [...prev, created];
             });
 
@@ -656,9 +794,16 @@ export function useInventoryController() {
                 return;
             }
 
-            setManualCategories((prev) => prev.map((c) => (c.id === target.id ? { ...c, categoryName: next } : c)));
-            setProducts((prev) => prev.map((p) => (p.category === oldCat ? { ...p, category: next } : p)));
+            setManualCategories((prev) =>
+                prev.map((c) => (c.id === target.id ? { ...c, categoryName: next } : c))
+            );
+
+            setProducts((prev) =>
+                prev.map((p) => (p.category === oldCat ? { ...p, category: next } : p))
+            );
+
             if (selectedCategory === oldCat) setSelectedCategory(next);
+
             setEditingCategory(null);
             setEditCategoryValue("");
         } catch {
@@ -691,7 +836,10 @@ export function useInventoryController() {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({ action: "delete_category", category_id: target.id }),
+                body: JSON.stringify({
+                    action: "delete_category",
+                    category_id: target.id,
+                }),
             });
 
             const { data } = await safeParseResponse<CategoryApiResponse>(res);
@@ -702,6 +850,7 @@ export function useInventoryController() {
             }
 
             setManualCategories((prev) => prev.filter((x) => x.id !== target.id));
+
             if (selectedCategory === cat) setSelectedCategory("All");
         } catch {
             alert("❌ Failed to delete category");
@@ -721,25 +870,30 @@ export function useInventoryController() {
     return {
         formMode,
         setFormMode,
+
         products,
         setProducts,
         manualCategories,
         setManualCategories,
         branches,
+
         storeName,
         storeId,
         role,
         assignedBranchId,
         assignedBranchName,
+
         search,
         setSearch,
         selectedCategory,
         setSelectedCategory,
         selectedBranchId,
         setSelectedBranchId,
+
         showForm,
         setShowForm,
         editingId,
+
         name,
         setName,
         category,
@@ -752,6 +906,7 @@ export function useInventoryController() {
         setOriginalPrice,
         salesPrice,
         setSalesPrice,
+
         hasVariants,
         setHasVariants,
         variants,
@@ -760,37 +915,56 @@ export function useInventoryController() {
         removeVariantRow,
         updateVariantValue,
         updateVariantField,
+
         productBranchId,
         setProductBranchId,
+
         editingCategory,
         editCategoryValue,
         setEditCategoryValue,
+
         showDeleteProductDialog,
         productToDelete,
         showConfirmProductSaveDialog,
         pendingProductSave,
+
+        showImportDialog,
+        setShowImportDialog,
+        selectedImportFile,
+        setSelectedImportFile,
+        isImporting,
+        openImportDialog,
+        closeImportDialog,
+        importProductsFromExcel,
+
         isOwner,
         isBranchUser,
+
         branchGroups,
         categories,
         selectedBranch,
         baseProducts,
         filteredProducts,
         filteredCategoriesForManage,
+
         openManageCategories,
         openAddProduct,
+
         handleSubmitProduct,
         confirmSaveProduct,
         closeConfirmProductSaveDialog,
+
         handleEditProduct,
         requestDeleteProduct,
         confirmDeleteProduct,
         closeDeleteProductDialog,
+
         addCategoryNow,
         updateCategoryNow,
         deleteCategoryNow,
         startEditCategory,
         cancelEditCategory,
+
         refreshAll,
     };
 }
