@@ -16,7 +16,7 @@ export default function ManagerInventory() {
                 title="Inventory"
                 badge={inv.assignedBranchName || "Assigned Branch"}
                 role={inv.role}
-                onRefresh={() => void inv.refreshAll()}
+                onRefresh={() => window.location.reload()}
             />
 
             <section className="px-5 py-5">

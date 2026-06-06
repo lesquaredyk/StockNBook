@@ -1,14 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import * as XLSX from "xlsx";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
 import {
     type Branch,
     type Category,
     type InventoryRole,
     type PendingProductSave,
     type Product,
+    type ProductSaveData,
     type ProductVariantSave,
     getApiErrorMessage,
     getTokenOrAlert,
@@ -38,6 +39,8 @@ type BranchesApiResponse = {
     error?: string;
 };
 
+type FormSubmitEvent = { preventDefault: () => void };
+
 export type ProductFormVariant = {
     id?: number;
     variantValues: Record<string, string>;
@@ -46,6 +49,233 @@ export type ProductFormVariant = {
     originalPrice: string;
     salesPrice: string;
 };
+
+export type ImportPreviewProduct = ProductSaveData & {
+    tempId: string;
+};
+
+function cleanImportCell(value: unknown) {
+    return String(value ?? "").trim();
+}
+
+function parseImportNumber(value: unknown) {
+    const text = String(value ?? "")
+        .replace(/[₱,\s]/g, "")
+        .replace(/pesos/gi, "")
+        .trim();
+
+    const match = text.match(/-?\d+(\.\d+)?/);
+    return match ? Number(match[0]) : 0;
+}
+
+function normalizeImportHeader(value: unknown) {
+    const key = cleanImportCell(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    if (["product", "products", "name"].includes(key) || key === "product" + "name") return "product";
+    if (["category", "categories"].includes(key)) return "category";
+    if (["variant", "variants", "variation", "variations"].includes(key)) return "variants";
+    if (["stock", "stocks", "quantity", "qty"].includes(key)) return "stock";
+    if (["alert"].includes(key) || key === "alert" + "level" || key === "reorder" + "level") return "alert";
+    if (["original", "cost"].includes(key) || key === "original" + "price" || key === "cost" + "price") return "original";
+    if (["sales", "price"].includes(key) || key === "sales" + "price" || key === "selling" + "price") return "sales";
+
+    return "";
+}
+
+function isImportYes(value: unknown) {
+    const text = cleanImportCell(value).toLowerCase();
+    return ["yes", "y", "true", "1"].includes(text);
+}
+
+function variantTextToValues(value: unknown): Record<string, string> {
+    const text = cleanImportCell(value);
+
+    if (!text) return {};
+
+    const parts = text
+        .split(/[,/|]/g)
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+    if (parts.length === 0) {
+        return { option1: text };
+    }
+
+    return Object.fromEntries(
+        parts.map((part, index) => [`option${index + 1}`, part])
+    );
+}
+
+function recalculateImportProduct(product: ImportPreviewProduct): ImportPreviewProduct {
+    const variants = product.variants || [];
+
+    if (!product.hasVariants || variants.length === 0) {
+        return {
+            ...product,
+            stock: Number(product.stock || 0),
+            alertLevel: Number(product.alertLevel || 0),
+            originalPrice: Number(product.originalPrice || 0),
+            salesPrice: Number(product.salesPrice || 0),
+            variants: [],
+        };
+    }
+
+    const stock = variants.reduce(
+        (sum, variant) => sum + Number(variant.stock || 0),
+        0
+    );
+
+    const alertLevel = variants.reduce(
+        (sum, variant) => sum + Number(variant.alertLevel || 0),
+        0
+    );
+
+    const originalPrices = variants.map((variant) =>
+        Number(variant.originalPrice || 0)
+    );
+
+    const salesPrices = variants.map((variant) =>
+        Number(variant.salesPrice || 0)
+    );
+
+    return {
+        ...product,
+        stock,
+        alertLevel,
+        originalPrice: originalPrices.length ? Math.min(...originalPrices) : 0,
+        salesPrice: salesPrices.length ? Math.min(...salesPrices) : 0,
+        variants,
+    };
+}
+
+async function parseImportFileToPreviewProducts({
+                                                    file,
+                                                    storeId,
+                                                    branchId,
+                                                    branchName,
+                                                }: {
+    file: File;
+    storeId: string;
+    branchId: string;
+    branchName: string | null;
+}): Promise<ImportPreviewProduct[]> {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheetName = workbook.SheetNames[0];
+
+    if (!firstSheetName) {
+        throw new Error("The uploaded file has no worksheet.");
+    }
+
+    const worksheet = workbook.Sheets[firstSheetName];
+
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+        header: 1,
+        ["def" + "val"]: "",
+    });
+
+    const headerIndex = rows.findIndex((row) => {
+        const headers = row.map(normalizeImportHeader);
+        return headers.includes("product") && headers.includes("category");
+    });
+
+    if (headerIndex < 0) {
+        throw new Error("Cannot find Product and Category headers in the file.");
+    }
+
+    const headerRow = rows[headerIndex];
+    const headerMap: Partial<Record<string, number>> = {};
+
+    headerRow.forEach((cell, index) => {
+        const key = normalizeImportHeader(cell);
+        if (key) headerMap[key] = index;
+    });
+
+    const getValue = (row: unknown[], key: string) => {
+        const index = headerMap[key];
+        return index === undefined ? "" : row[index];
+    };
+
+    const products: ImportPreviewProduct[] = [];
+    let currentVariantProduct: ImportPreviewProduct | null = null;
+
+    const pushCurrentVariantProduct = () => {
+        if (!currentVariantProduct) return;
+
+        products.push(recalculateImportProduct(currentVariantProduct));
+        currentVariantProduct = null;
+    };
+
+    rows.slice(headerIndex + 1).forEach((row, rowIndex) => {
+        const productName = cleanImportCell(getValue(row, "product"));
+        const category = cleanImportCell(getValue(row, "category"));
+        const variantsCell = cleanImportCell(getValue(row, "variants"));
+
+        const stock = parseImportNumber(getValue(row, "stock"));
+        const alertLevel = parseImportNumber(getValue(row, "alert"));
+        const originalPrice = parseImportNumber(getValue(row, "original"));
+        const salesPrice = parseImportNumber(getValue(row, "sales"));
+
+        const rowIsBlank =
+            !productName &&
+            !category &&
+            !variantsCell &&
+            stock === 0 &&
+            alertLevel === 0 &&
+            originalPrice === 0 &&
+            salesPrice === 0;
+
+        if (rowIsBlank) return;
+
+        if (productName) {
+            pushCurrentVariantProduct();
+
+            const hasVariants = isImportYes(variantsCell);
+
+            const product: ImportPreviewProduct = {
+                tempId: `import-${Date.now()}-${rowIndex}`,
+                storeId: storeId ? Number(storeId) : null,
+                branchId: Number(branchId),
+                branchName,
+                name: productName,
+                category,
+                stock,
+                alertLevel,
+                originalPrice,
+                salesPrice,
+                hasVariants,
+                variants: hasVariants ? [] : [],
+            };
+
+            if (hasVariants) {
+                currentVariantProduct = product;
+                return;
+            }
+
+            products.push(product);
+            return;
+        }
+
+        if (currentVariantProduct && variantsCell) {
+            currentVariantProduct.variants = [
+                ...(currentVariantProduct.variants || []),
+                {
+                    variantValues: variantTextToValues(variantsCell),
+                    stock,
+                    alertLevel,
+                    originalPrice,
+                    salesPrice,
+                },
+            ];
+        }
+    });
+
+    pushCurrentVariantProduct();
+
+    return products.filter(
+        (product) => product.name.trim() && product.category.trim()
+    );
+}
 
 function getSessionSnapshot() {
     if (typeof window === "undefined") {
@@ -83,9 +313,59 @@ function getSessionSnapshot() {
     return { role, storeId, branchId, branchName, storeName };
 }
 
+const LEGACY_VARIANT_KEY_MAP: Record<string, string> = {
+    option1: "size",
+    option2: "packaging",
+    option3: "color",
+    option4: "material",
+    option5: "type",
+};
+
+function isLegacyVariantKey(key: string) {
+    return /^option\d+$/i.test(String(key || "").trim());
+}
+
+function normalizeVariantKey(key: string) {
+    const cleanKey = String(key || "").trim();
+    const lowerKey = cleanKey.toLowerCase();
+
+    return LEGACY_VARIANT_KEY_MAP[lowerKey] || lowerKey;
+}
+
+function normalizeVariantValuesForEdit(
+    values: Record<string, string> | undefined
+): Record<string, string> {
+    const normalized: Record<string, string> = {};
+
+    const entries = Object.entries(values || {}).sort(([keyA], [keyB]) => {
+        const aIsLegacy = isLegacyVariantKey(keyA);
+        const bIsLegacy = isLegacyVariantKey(keyB);
+
+        if (aIsLegacy && !bIsLegacy) return 1;
+        if (!aIsLegacy && bIsLegacy) return -1;
+
+        return 0;
+    });
+
+    entries.forEach(([rawKey, rawValue]) => {
+        const key = normalizeVariantKey(rawKey);
+        const value = String(rawValue || "").trim();
+
+        if (!key || !value) return;
+
+        if (!normalized[key]) {
+            normalized[key] = value;
+        }
+    });
+
+    return normalized;
+}
+
 function normalizeVariantForSave(v: ProductFormVariant): ProductVariantSave {
+    const normalizedValues = normalizeVariantValuesForEdit(v.variantValues);
+
     const variantValues = Object.fromEntries(
-        Object.entries(v.variantValues || {})
+        Object.entries(normalizedValues)
             .map(([key, value]) => [key, String(value || "").trim()])
             .filter(([, value]) => value.length > 0)
     );
@@ -98,6 +378,131 @@ function normalizeVariantForSave(v: ProductFormVariant): ProductVariantSave {
         originalPrice: Number(v.originalPrice || 0),
         salesPrice: Number(v.salesPrice || 0),
     };
+}
+
+function normalizeDuplicateText(value: unknown) {
+    return String(value ?? "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+}
+
+function getProductBranchId(value: unknown) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function findExistingProductByName(
+    productList: Product[],
+    productName: string,
+    branchId: string | number | null,
+    excludeProductId?: number | null
+) {
+    const cleanName = normalizeDuplicateText(productName);
+    const cleanBranchId = getProductBranchId(branchId);
+
+    if (!cleanName || !cleanBranchId) return undefined;
+
+    return productList.find((product) => {
+        const sameName = normalizeDuplicateText(product.name) === cleanName;
+        const sameBranch =
+            getProductBranchId(product.branchId) === cleanBranchId;
+        const notCurrentProduct =
+            !excludeProductId || Number(product.id) !== Number(excludeProductId);
+
+        return sameName && sameBranch && notCurrentProduct;
+    });
+}
+
+function getVariantSignature(values: Record<string, string> | undefined) {
+    const normalizedValues = normalizeVariantValuesForEdit(values);
+
+    const entries = Object.entries(normalizedValues)
+        .map(([key, value]) => [
+            normalizeDuplicateText(key),
+            normalizeDuplicateText(value),
+        ])
+        .filter(([, value]) => value.length > 0)
+        .sort(([keyA, valueA], [keyB, valueB]) => {
+            const keyCompare = keyA.localeCompare(keyB);
+            return keyCompare !== 0 ? keyCompare : valueA.localeCompare(valueB);
+        });
+
+    if (entries.length === 0) return "";
+
+    return entries.map(([key, value]) => `${key}:${value}`).join("|");
+}
+
+function getVariantDisplayName(values: Record<string, string> | undefined) {
+    return (
+        Object.values(normalizeVariantValuesForEdit(values))
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+            .join(", ") || "Unnamed variant"
+    );
+}
+
+function getDuplicateVariantError(
+    productName: string,
+    variantList: ProductVariantSave[]
+) {
+    const seen = new Map<string, string>();
+
+    for (const variant of variantList) {
+        const signature = getVariantSignature(variant.variantValues);
+        if (!signature) continue;
+
+        const displayName = getVariantDisplayName(variant.variantValues);
+
+        if (seen.has(signature)) {
+            return `❌ Variant "${displayName}" already exists in ${productName}.`;
+        }
+
+        seen.set(signature, displayName);
+    }
+
+    return "";
+}
+
+function getImportDuplicateError(
+    importProducts: ImportPreviewProduct[],
+    existingProducts: Product[]
+) {
+    const seenImportProducts = new Map<string, string>();
+
+    for (const product of importProducts) {
+        const productData = recalculateImportProduct(product);
+        const cleanName = productData.name.trim();
+        const branchId = getProductBranchId(productData.branchId);
+        const importKey = `${branchId}|${normalizeDuplicateText(cleanName)}`;
+
+        const existingProduct = findExistingProductByName(
+            existingProducts,
+            cleanName,
+            branchId
+        );
+
+        if (existingProduct) {
+            return `❌ Product "${cleanName}" already exists in this branch.`;
+        }
+
+        if (seenImportProducts.has(importKey)) {
+            return `❌ Product "${cleanName}" is duplicated in the Excel file.`;
+        }
+
+        seenImportProducts.set(importKey, cleanName);
+
+        if (productData.hasVariants) {
+            const duplicateVariantError = getDuplicateVariantError(
+                cleanName,
+                productData.variants || []
+            );
+
+            if (duplicateVariantError) return duplicateVariantError;
+        }
+    }
+
+    return "";
 }
 
 export function useInventoryController() {
@@ -148,7 +553,9 @@ export function useInventoryController() {
         useState<PendingProductSave | null>(null);
 
     const [showImportDialog, setShowImportDialog] = useState(false);
+    const [showImportConfirmDialog, setShowImportConfirmDialog] = useState(false);
     const [selectedImportFile, setSelectedImportFile] = useState<File | null>(null);
+    const [importPreviewProducts, setImportPreviewProducts] = useState<ImportPreviewProduct[]>([]);
     const [isImporting, setIsImporting] = useState(false);
 
     const isOwner = role === "owner";
@@ -369,6 +776,114 @@ export function useInventoryController() {
     function closeImportDialog() {
         setSelectedImportFile(null);
         setShowImportDialog(false);
+        setShowImportConfirmDialog(false);
+        setImportPreviewProducts([]);
+    }
+
+    async function ensureCategoriesExist(categoryNames: Array<string | null | undefined>) {
+        const token = getTokenOrAlert();
+        if (!token) return false;
+
+        const uniqueCategories = Array.from(
+            new Map(
+                categoryNames
+                    .map((value) => normalizeCat(value || ""))
+                    .filter(Boolean)
+                    .map((value) => [value.toLowerCase(), value])
+            ).values()
+        );
+
+        if (uniqueCategories.length === 0) return true;
+
+        const existingCategoryKeys = new Set(
+            manualCategories.map((cat) =>
+                normalizeCat(cat.categoryName).toLowerCase()
+            )
+        );
+
+        const missingCategories = uniqueCategories.filter(
+            (catName) => !existingCategoryKeys.has(catName.toLowerCase())
+        );
+
+        if (missingCategories.length === 0) return true;
+
+        const createdCategories: Category[] = [];
+
+        for (const catName of missingCategories) {
+            try {
+                const res = await fetch("/api/categories", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        action: "create_category",
+                        categoryName: catName,
+                        description: "",
+                        ...(storeId ? { store_id: Number(storeId) } : {}),
+                    }),
+                });
+
+                const { data } = await safeParseResponse<CategoryApiResponse>(res);
+
+                if (!res.ok) {
+                    const message = data?.error || "";
+
+                    // If backend says it already exists, just continue.
+                    if (/exist|duplicate/i.test(message)) {
+                        continue;
+                    }
+
+                    alert(`❌ Failed to save category "${catName}".`);
+                    return false;
+                }
+
+                const created = data.category ?? {
+                    id: data.id ?? Date.now() + createdCategories.length,
+                    categoryName: data.categoryName ?? catName,
+                    description: "",
+                };
+
+                createdCategories.push(created);
+            } catch {
+                alert(`❌ Failed to save category "${catName}".`);
+                return false;
+            }
+        }
+
+        if (createdCategories.length > 0) {
+            setManualCategories((prev) => {
+                const existingKeys = new Set(
+                    prev.map((cat) =>
+                        normalizeCat(cat.categoryName).toLowerCase()
+                    )
+                );
+
+                const nextCategories = createdCategories.filter(
+                    (cat) =>
+                        !existingKeys.has(
+                            normalizeCat(cat.categoryName).toLowerCase()
+                        )
+                );
+
+                return [...prev, ...nextCategories];
+            });
+        }
+
+        await loadCategories();
+
+        return true;
+    }
+
+    function getImportTargetBranch() {
+        const targetBranchId = isBranchUser ? assignedBranchId : selectedBranchId;
+        const branchLabel =
+            branches.find((b) => String(b.id) === String(targetBranchId))?.branchName ||
+            assignedBranchName ||
+            null;
+
+        return { targetBranchId, branchLabel };
     }
 
     async function importProductsFromExcel() {
@@ -377,10 +892,7 @@ export function useInventoryController() {
             return;
         }
 
-        const token = getTokenOrAlert();
-        if (!token) return;
-
-        const targetBranchId = isBranchUser ? assignedBranchId : selectedBranchId;
+        const { targetBranchId, branchLabel } = getImportTargetBranch();
 
         if (!targetBranchId) {
             alert("❌ Please select a branch before importing.");
@@ -392,30 +904,136 @@ export function useInventoryController() {
             return;
         }
 
-        const formData = new FormData();
-        formData.append("file", selectedImportFile);
-        formData.append("store_id", String(storeId));
-        formData.append("branch_id", String(targetBranchId));
+        try {
+            setIsImporting(true);
+
+            const previewProducts = await parseImportFileToPreviewProducts({
+                file: selectedImportFile,
+                storeId,
+                branchId: targetBranchId,
+                branchName: branchLabel,
+            });
+
+            if (previewProducts.length === 0) {
+                alert("❌ No valid products found in the file.");
+                return;
+            }
+
+            const duplicateError = getImportDuplicateError(previewProducts, products);
+
+            if (duplicateError) {
+                alert(duplicateError);
+                return;
+            }
+
+            setImportPreviewProducts(previewProducts);
+            setShowImportDialog(false);
+            setShowImportConfirmDialog(true);
+        } catch (error) {
+            console.error("Import preview failed:", error);
+            alert(
+                error instanceof Error
+                    ? `❌ ${error.message}`
+                    : "❌ Failed to preview import file."
+            );
+        } finally {
+            setIsImporting(false);
+        }
+    }
+
+    async function confirmImportProducts() {
+        if (importPreviewProducts.length === 0) {
+            alert("❌ No products to import.");
+            return;
+        }
+
+        const duplicateError = getImportDuplicateError(importPreviewProducts, products);
+
+        if (duplicateError) {
+            alert(duplicateError);
+            return;
+        }
+
+        const token = getTokenOrAlert();
+        if (!token) return;
+
+        const importCategoriesOk = await ensureCategoriesExist(
+            importPreviewProducts.map((product) =>
+                recalculateImportProduct(product).category
+            )
+        );
+
+        if (!importCategoriesOk) return;
 
         try {
             setIsImporting(true);
 
-            const res = await fetch("/api/products/import", {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-                body: formData,
-            });
+            for (const product of importPreviewProducts) {
+                const productData = recalculateImportProduct(product);
 
-            const { data } = await safeParseResponse<{ success?: boolean; error?: string }>(res);
+                if (!productData.name.trim() || !productData.category.trim()) {
+                    alert("❌ Product name and category are required.");
+                    return;
+                }
 
-            if (!res.ok) {
-                alert(`❌ ${data?.error || "Failed to import products"}`);
-                return;
+                if (
+                    productData.hasVariants &&
+                    (!productData.variants || productData.variants.length === 0)
+                ) {
+                    alert(
+                        `❌ ${productData.name} is marked as variant product but has no variants.`
+                    );
+                    return;
+                }
+
+                const serializedVariants = (productData.variants || []).map((variant) => ({
+                    variantValues: variant.variantValues || {},
+                    variant_values: variant.variantValues || {},
+                    stock: Number(variant.stock || 0),
+                    alertLevel: Number(variant.alertLevel || 0),
+                    alert_level: Number(variant.alertLevel || 0),
+                    originalPrice: Number(variant.originalPrice || 0),
+                    original_price: Number(variant.originalPrice || 0),
+                    salesPrice: Number(variant.salesPrice || 0),
+                    sales_price: Number(variant.salesPrice || 0),
+                }));
+
+                const res = await fetch("/api/products", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        action: "create_product",
+                        store_id: productData.storeId,
+                        storeId: productData.storeId,
+                        branch_id: Number(productData.branchId),
+                        branchId: Number(productData.branchId),
+                        name: productData.name,
+                        category: productData.category,
+                        stock: Number(productData.stock || 0),
+                        alertLevel: Number(productData.alertLevel || 0),
+                        alert_level: Number(productData.alertLevel || 0),
+                        originalPrice: Number(productData.originalPrice || 0),
+                        original_price: Number(productData.originalPrice || 0),
+                        salesPrice: Number(productData.salesPrice || 0),
+                        sales_price: Number(productData.salesPrice || 0),
+                        hasVariants: productData.hasVariants,
+                        has_variants: productData.hasVariants ? 1 : 0,
+                        variants: productData.hasVariants ? serializedVariants : [],
+                    }),
+                });
+
+                const { data } = await safeParseResponse<ProductsApiResponse>(res);
+
+                if (!res.ok) {
+                    alert(`❌ ${data?.error || `Failed to import ${productData.name}`}`);
+                    return;
+                }
             }
 
-            await loadProducts();
+            await refreshAll();
 
             alert("✅ Products imported successfully.");
             closeImportDialog();
@@ -470,7 +1088,7 @@ export function useInventoryController() {
         );
     }
 
-    function handleSubmitProduct(e: FormEvent<HTMLFormElement>) {
+    function handleSubmitProduct(e: FormSubmitEvent) {
         e.preventDefault();
 
         const cleanName = name.trim();
@@ -493,6 +1111,18 @@ export function useInventoryController() {
             return;
         }
 
+        const existingProduct = findExistingProductByName(
+            products,
+            cleanName,
+            targetBranchId,
+            editingId
+        );
+
+        if (existingProduct) {
+            alert(`❌ Product "${cleanName}" already exists in this branch.`);
+            return;
+        }
+
         if (hasVariants && variants.length === 0) {
             alert("❌ Please add at least one variant.");
             return;
@@ -511,6 +1141,16 @@ export function useInventoryController() {
 
             if (hasInvalidVariant) {
                 alert("❌ Each variant must have at least one value, like size or color.");
+                return;
+            }
+
+            const duplicateVariantError = getDuplicateVariantError(
+                cleanName,
+                cleanedVariants
+            );
+
+            if (duplicateVariantError) {
+                alert(duplicateVariantError);
                 return;
             }
         }
@@ -562,6 +1202,15 @@ export function useInventoryController() {
             alert("❌ Missing branch for product.");
             return;
         }
+
+        const categoriesOk = await ensureCategoriesExist([
+            productData.category,
+            ...(pendingProductSave.mode === "edit"
+                ? [pendingProductSave.before.category]
+                : []),
+        ]);
+
+        if (!categoriesOk) return;
 
         const serializedVariants = (productData.variants || []).map((variant) => ({
             ...(variant.id ? { id: Number(variant.id) } : {}),
@@ -615,7 +1264,7 @@ export function useInventoryController() {
                 return;
             }
 
-            await loadProducts();
+            await refreshAll();
             setSelectedCategory(productData.category);
             setPendingProductSave(null);
             setShowConfirmProductSaveDialog(false);
@@ -648,7 +1297,7 @@ export function useInventoryController() {
             Array.isArray(p.variants)
                 ? p.variants.map((v) => ({
                     id: v.id,
-                    variantValues: v.variantValues || {},
+                    variantValues: normalizeVariantValuesForEdit(v.variantValues || {}),
                     stock: String(v.stock),
                     alertLevel: String(v.alertLevel),
                     originalPrice: String(v.originalPrice),
@@ -857,16 +1506,6 @@ export function useInventoryController() {
         }
     }
 
-    function startEditCategory(cat: string) {
-        setEditingCategory(cat);
-        setEditCategoryValue(cat);
-    }
-
-    function cancelEditCategory() {
-        setEditingCategory(null);
-        setEditCategoryValue("");
-    }
-
     return {
         formMode,
         setFormMode,
@@ -936,6 +1575,10 @@ export function useInventoryController() {
         openImportDialog,
         closeImportDialog,
         importProductsFromExcel,
+        showImportConfirmDialog,
+        setShowImportConfirmDialog,
+        importPreviewProducts,
+        confirmImportProducts,
 
         isOwner,
         isBranchUser,
@@ -962,8 +1605,6 @@ export function useInventoryController() {
         addCategoryNow,
         updateCategoryNow,
         deleteCategoryNow,
-        startEditCategory,
-        cancelEditCategory,
 
         refreshAll,
     };

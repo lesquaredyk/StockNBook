@@ -1,11 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import * as React from "react";
-import * as XLSX from "xlsx";
 import {
     AlertTriangle,
-    ArchiveX,
-    Boxes,
     ChevronDown,
     ChevronRight,
     RefreshCw,
@@ -106,25 +103,6 @@ type VariantEditorController = InventoryController & {
     ) => void;
 };
 
-type UploadInventoryOptions = {
-    branches?: Branch[];
-    fallbackBranchId?: number | string | null;
-    fallbackBranchName?: string | null;
-    fallbackStoreId?: number | string | null;
-};
-
-type ExcelInventoryRow = {
-    Product?: string;
-    Category?: string;
-    Variants?: string;
-    Stock?: string | number;
-    Alert?: string | number;
-    Original?: string | number;
-    Sales?: string | number;
-    Status?: string;
-    [key: string]: unknown;
-};
-
 const SELECTED_BRANCH_ID_STORAGE_KEY = "stocknbook_selected_branch_id";
 const SELECTED_BRANCH_NAME_STORAGE_KEY = "stocknbook_selected_branch_name";
 
@@ -139,9 +117,17 @@ export const labelClass = "text-xs font-semibold text-[#5A476A]";
 export const fieldClass =
     "w-full rounded-xl border border-[#E3D8EA] bg-white p-3 text-sm text-[#1A1220] placeholder:text-[#9B8AAA] focus:border-[#2B174C] focus:outline-none focus:ring-1 focus:ring-[#2B174C]";
 
-export function money(n: number) {
-    const value = Number(n ?? 0);
-    return `₱${Number.isFinite(value) ? value.toFixed(2) : "0.00"}`;
+function money(value: number | string) {
+    const amount = Number(value || 0);
+
+    return `₱${amount.toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
+}
+
+function formatNumber(value: number | string) {
+    return Number(value || 0).toLocaleString("en-PH");
 }
 
 export function normalizeCat(s: string) {
@@ -150,9 +136,9 @@ export function normalizeCat(s: string) {
 
 export function getApiErrorMessage(data: unknown, fallback: string): string {
     if (typeof data === "object" && data !== null && "error" in data) {
-        const err = (data as ApiError).error;
+        const err = String((data as ApiError).error ?? "").trim();
 
-        if (typeof err === "string" && err.trim().length > 0) {
+        if (err.length > 0) {
             return err;
         }
     }
@@ -188,7 +174,7 @@ export async function safeParseResponse<T = unknown>(
 
 export function normalizeProductVariant(raw: any): ProductVariant {
     const rawValues = raw.variantValues ?? raw.variant_values ?? {};
-    let parsedVariantValues: Record<string, string> = {};
+    let parsedVariantValues: Record<string, string>;
 
     try {
         parsedVariantValues =
@@ -244,65 +230,8 @@ export function pillClass(isSelected: boolean) {
     ].join(" ");
 }
 
-function cleanExcelText(value: unknown) {
-    return String(value ?? "").trim();
-}
-
-function parseExcelNumber(value: unknown) {
-    const text = String(value ?? "")
-        .replace(/[₱,]/g, "")
-        .replace(/pesos/gi, "")
-        .trim();
-
-    const match = text.match(/-?\d+(\.\d+)?/);
-    return match ? Number(match[0]) : 0;
-}
-
-function toNullableNumber(value: unknown): number | null {
-    if (value === null || value === undefined || value === "") return null;
-
-    const numberValue = Number(value);
-
-    return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
-}
-
 function normalizeLookupText(value: unknown) {
-    return cleanExcelText(value).toLowerCase().replace(/\s+/g, " ");
-}
-
-function isYes(value: unknown) {
-    return normalizeLookupText(value) === "yes";
-}
-
-function getRowValue(row: ExcelInventoryRow, possibleKeys: string[]) {
-    const rowKeys = Object.keys(row);
-
-    for (const possibleKey of possibleKeys) {
-        const foundKey = rowKeys.find(
-            (key) => key.trim().toLowerCase() === possibleKey.toLowerCase()
-        );
-
-        if (foundKey) return row[foundKey];
-    }
-
-    return "";
-}
-
-function getVariantValuesFromLabel(label: string): Record<string, string> {
-    const parts = label
-        .split(",")
-        .map((part) => part.trim())
-        .filter(Boolean);
-
-    if (parts.length === 0) return {};
-
-    const values: Record<string, string> = {};
-
-    parts.forEach((part, index) => {
-        values[`option${index + 1}`] = part;
-    });
-
-    return values;
+    return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function rememberSelectedBranch(branch: Branch) {
@@ -310,253 +239,6 @@ function rememberSelectedBranch(branch: Branch) {
 
     sessionStorage.setItem(SELECTED_BRANCH_ID_STORAGE_KEY, String(branch.id));
     sessionStorage.setItem(SELECTED_BRANCH_NAME_STORAGE_KEY, branch.branchName);
-}
-
-function getRememberedBranch() {
-    if (typeof window === "undefined") {
-        return {
-            id: null as number | null,
-            name: null as string | null,
-        };
-    }
-
-    return {
-        id: toNullableNumber(sessionStorage.getItem(SELECTED_BRANCH_ID_STORAGE_KEY)),
-        name: sessionStorage.getItem(SELECTED_BRANCH_NAME_STORAGE_KEY),
-    };
-}
-
-function resolveUploadBranch(options: UploadInventoryOptions) {
-    const directBranchId = toNullableNumber(options.fallbackBranchId);
-
-    if (directBranchId) {
-        return {
-            id: directBranchId,
-            name: options.fallbackBranchName || null,
-        };
-    }
-
-    const rememberedBranch = getRememberedBranch();
-
-    if (rememberedBranch.id) {
-        const matchedBranch = options.branches?.find(
-            (branch) => Number(branch.id) === Number(rememberedBranch.id)
-        );
-
-        return {
-            id: rememberedBranch.id,
-            name: matchedBranch?.branchName || rememberedBranch.name || null,
-        };
-    }
-
-    return {
-        id: null,
-        name: null,
-    };
-}
-
-function parseInventoryExcelRows(
-    rows: ExcelInventoryRow[],
-    options: UploadInventoryOptions
-): ProductSaveData[] {
-    const products: ProductSaveData[] = [];
-    let currentProduct: ProductSaveData | null = null;
-
-    const resolvedBranch = resolveUploadBranch(options);
-    const selectedStoreId = toNullableNumber(options.fallbackStoreId);
-
-    rows.forEach((row) => {
-        const productName = cleanExcelText(getRowValue(row, ["Product"]));
-        const category = cleanExcelText(getRowValue(row, ["Category"]));
-        const variantsCell = cleanExcelText(getRowValue(row, ["Variants"]));
-
-        const stock = parseExcelNumber(getRowValue(row, ["Stock"]));
-        const alertLevel = parseExcelNumber(getRowValue(row, ["Alert"]));
-        const originalPrice = parseExcelNumber(
-            getRowValue(row, ["Original", "Original Price"])
-        );
-        const salesPrice = parseExcelNumber(
-            getRowValue(row, ["Sales", "Sales Price"])
-        );
-
-        const hasProductName = productName.length > 0;
-
-        if (hasProductName) {
-            const hasVariants = isYes(variantsCell);
-
-            currentProduct = {
-                storeId: selectedStoreId,
-                branchId: resolvedBranch.id,
-                branchName: resolvedBranch.name,
-                name: productName,
-                category,
-                stock,
-                alertLevel,
-                originalPrice,
-                salesPrice,
-                hasVariants,
-                variants: hasVariants ? [] : undefined,
-            };
-
-            products.push(currentProduct);
-            return;
-        }
-
-        if (!currentProduct || !currentProduct.hasVariants) return;
-        if (!variantsCell) return;
-
-        const variant: ProductVariantSave = {
-            variantValues: getVariantValuesFromLabel(variantsCell),
-            stock,
-            alertLevel,
-            originalPrice,
-            salesPrice,
-        };
-
-        currentProduct.variants = [...(currentProduct.variants || []), variant];
-    });
-
-    return products.map((product) => {
-        if (product.hasVariants && product.variants && product.variants.length > 0) {
-            const totalStock = product.variants.reduce(
-                (sum, variant) => sum + Number(variant.stock || 0),
-                0
-            );
-
-            const lowestOriginal = Math.min(
-                ...product.variants.map((variant) =>
-                    Number(variant.originalPrice || 0)
-                )
-            );
-
-            const lowestSales = Math.min(
-                ...product.variants.map((variant) => Number(variant.salesPrice || 0))
-            );
-
-            return {
-                ...product,
-                stock: totalStock,
-                originalPrice: Number.isFinite(lowestOriginal) ? lowestOriginal : 0,
-                salesPrice: Number.isFinite(lowestSales) ? lowestSales : 0,
-            };
-        }
-
-        return product;
-    });
-}
-
-async function saveUploadedInventoryProducts(
-    products: ProductSaveData[],
-    options: UploadInventoryOptions
-) {
-    const token = getTokenOrAlert();
-
-    if (!token) return;
-
-    const resolvedBranch = resolveUploadBranch(options);
-
-    if (!resolvedBranch.id) {
-        throw new Error("Please select a branch first before uploading inventory products.");
-    }
-
-    if (!Array.isArray(products) || products.length === 0) {
-        alert("❌ No valid products found in the uploaded file.");
-        return;
-    }
-
-    let savedCount = 0;
-
-    for (const product of products) {
-        if (!product.name || !product.category) {
-            continue;
-        }
-
-        const payload: ProductSaveData = {
-            ...product,
-            storeId:
-                toNullableNumber(product.storeId) ||
-                toNullableNumber(options.fallbackStoreId),
-            branchId: resolvedBranch.id,
-            branchName: resolvedBranch.name || product.branchName || null,
-        };
-
-        const response = await fetch("/api/products", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(payload),
-            cache: "no-store",
-        });
-
-        const { data } = await safeParseResponse<ApiError>(response);
-
-        if (!response.ok) {
-            throw new Error(
-                getApiErrorMessage(data, `Failed to upload product: ${product.name}`)
-            );
-        }
-
-        savedCount += 1;
-    }
-
-    alert(`✅ Successfully uploaded ${savedCount} product${savedCount !== 1 ? "s" : ""}.`);
-
-    window.location.reload();
-}
-
-export async function uploadInventoryExcelFile(
-    file: File,
-    options: UploadInventoryOptions = {}
-) {
-    if (!file) return;
-
-    const resolvedBranch = resolveUploadBranch(options);
-
-    if (!resolvedBranch.id) {
-        alert("❌ Please select a branch first before uploading inventory products.");
-        return;
-    }
-
-    const allowedExtensions = [".xlsx", ".xls", ".csv"];
-    const lowerFileName = file.name.toLowerCase();
-
-    const isAllowed = allowedExtensions.some((extension) =>
-        lowerFileName.endsWith(extension)
-    );
-
-    if (!isAllowed) {
-        alert("❌ Please upload an Excel or CSV file only.");
-        return;
-    }
-
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
-    const firstSheetName = workbook.SheetNames[0];
-
-    if (!firstSheetName) {
-        alert("❌ The uploaded file has no worksheet.");
-        return;
-    }
-
-    const sheet = workbook.Sheets[firstSheetName];
-
-    const rows = XLSX.utils.sheet_to_json<ExcelInventoryRow>(sheet, {
-        defval: "",
-    });
-
-    const products = parseInventoryExcelRows(rows, {
-        ...options,
-        fallbackBranchId: resolvedBranch.id,
-        fallbackBranchName: resolvedBranch.name,
-    });
-
-    await saveUploadedInventoryProducts(products, {
-        ...options,
-        fallbackBranchId: resolvedBranch.id,
-        fallbackBranchName: resolvedBranch.name,
-    });
 }
 
 function PesoPriceInput({
@@ -618,7 +300,7 @@ function VariantToggle({
             <span
                 className={[
                     "inline-block h-6 w-6 transform rounded-full shadow-sm transition",
-                    checked ? "translate-x-[50px] bg-white" : "translate-x-1 bg-[#8A7A91]",
+                    checked ? "translate-x-12.5 bg-white" : "translate-x-1 bg-[#8A7A91]",
                 ].join(" ")}
             />
         </button>
@@ -686,75 +368,15 @@ export function SearchAndActions({
                                      isOwner,
                                      onManageCategories,
                                      onAddProduct,
-                                     branches = [],
-                                     selectedBranchId = null,
-                                     selectedBranchName = null,
-                                     storeId = null,
+                                     onUploadFile,
                                  }: {
     search: string;
     setSearch: (value: string) => void;
     isOwner: boolean;
     onManageCategories: () => void;
     onAddProduct: () => void;
-    branches?: Branch[];
-    selectedBranchId?: number | string | null;
-    selectedBranchName?: string | null;
-    storeId?: number | string | null;
+    onUploadFile: () => void;
 }) {
-    const fileInputRef = React.useRef<HTMLInputElement | null>(null);
-    const [isUploading, setIsUploading] = React.useState(false);
-
-    const getResolvedUploadOptions = (): UploadInventoryOptions => {
-        const resolvedBranch = resolveUploadBranch({
-            branches,
-            fallbackBranchId: selectedBranchId,
-            fallbackBranchName: selectedBranchName,
-            fallbackStoreId: storeId,
-        });
-
-        return {
-            branches,
-            fallbackBranchId: resolvedBranch.id,
-            fallbackBranchName: resolvedBranch.name,
-            fallbackStoreId: storeId,
-        };
-    };
-
-    const handleUploadClick = () => {
-        const resolvedOptions = getResolvedUploadOptions();
-        const resolvedBranch = resolveUploadBranch(resolvedOptions);
-
-        if (!resolvedBranch.id) {
-            alert("❌ Please select a branch first before uploading inventory products.");
-            return;
-        }
-
-        fileInputRef.current?.click();
-    };
-
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-
-        if (!file) return;
-
-        try {
-            setIsUploading(true);
-
-            await uploadInventoryExcelFile(file, getResolvedUploadOptions());
-        } catch (error) {
-            const message =
-                error instanceof Error ? error.message : "Failed to upload inventory file.";
-
-            alert(`❌ ${message}`);
-        } finally {
-            setIsUploading(false);
-
-            if (fileInputRef.current) {
-                fileInputRef.current.value = "";
-            }
-        }
-    };
-
     return (
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
             <div className="relative flex-1">
@@ -762,6 +384,7 @@ export function SearchAndActions({
                     size={15}
                     className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9B8AAA]"
                 />
+
                 <input
                     placeholder={
                         isOwner
@@ -776,22 +399,13 @@ export function SearchAndActions({
                 />
             </div>
 
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleFileChange}
-                className="hidden"
-            />
-
             <button
                 type="button"
-                onClick={handleUploadClick}
-                disabled={isUploading}
-                className="flex items-center justify-center gap-2 rounded-xl border border-[#E6DDF0] bg-white px-5 py-3 text-sm font-semibold text-[#2B174C] shadow-sm hover:bg-[#F7F1FF] disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={onUploadFile}
+                className="flex items-center justify-center gap-2 rounded-xl border border-[#E6DDF0] bg-white px-5 py-3 text-sm font-semibold text-[#2B174C] shadow-sm hover:bg-[#F7F1FF]"
             >
                 <Upload size={15} />
-                {isUploading ? "Uploading..." : "Upload File"}
+                Upload File
             </button>
 
             <button
@@ -842,76 +456,428 @@ function getProductStockSummaryItems(products: Product[]): StockSummaryItem[] {
     });
 }
 
+type StockAlertStatus = "Low Stock" | "Out of Stock";
+
+type StockAlertItem = {
+    id: string;
+    product: Product;
+    productName: string;
+    variantName: string;
+    currentStock: number;
+    status: StockAlertStatus;
+};
+
+function getVariantName(variant: ProductVariant) {
+    const values = Object.values(variant.variantValues || {})
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+
+    return values.length > 0 ? values.join(", ") : "—";
+}
+
+function getStockAlertItems(products: Product[]): StockAlertItem[] {
+    return products.flatMap((product) => {
+        const variants = Array.isArray(product.variants) ? product.variants : [];
+        const hasVariants = product.hasVariants && variants.length > 0;
+
+        if (hasVariants) {
+            return variants
+                .map((variant) => {
+                    const currentStock = Number(variant.stock || 0);
+                    const alertLevel = Number(variant.alertLevel || 0);
+
+                    const status: StockAlertStatus | null =
+                        currentStock <= 0
+                            ? "Out of Stock"
+                            : currentStock <= alertLevel
+                                ? "Low Stock"
+                                : null;
+
+                    if (!status) return null;
+
+                    return {
+                        id: `${product.id}-${variant.id}`,
+                        product,
+                        productName: product.name,
+                        variantName: getVariantName(variant),
+                        currentStock,
+                        status,
+                    };
+                })
+                .filter(Boolean) as StockAlertItem[];
+        }
+
+        const currentStock = Number(product.stock || 0);
+        const alertLevel = Number(product.alertLevel || 0);
+
+        const status: StockAlertStatus | null =
+            currentStock <= 0
+                ? "Out of Stock"
+                : currentStock <= alertLevel
+                    ? "Low Stock"
+                    : null;
+
+        if (!status) return [];
+
+        return [
+            {
+                id: `${product.id}-regular`,
+                product,
+                productName: product.name,
+                variantName: "—",
+                currentStock,
+                status,
+            },
+        ];
+    });
+}
+
 export function StatCard({
-                             icon,
                              label,
                              value,
-                             tone = "default",
                          }: {
-    icon: React.ReactNode;
     label: string;
-    value: string | number;
-    tone?: "default" | "low" | "out";
+    value: React.ReactNode;
 }) {
-    const toneClass =
-        tone === "low"
-            ? "border-[#F5D56B] bg-[#FFF8D8]"
-            : tone === "out"
-                ? "border-[#F3A3A3] bg-[#FFE5E5]"
-                : "border-[#E6DDF0] bg-white";
-
-    const textClass =
-        tone === "low"
-            ? "text-[#8A5A00]"
-            : tone === "out"
-                ? "text-[#9A2424]"
-                : "text-[#5F4E75]";
-
     return (
-        <div className={`rounded-[16px] border p-4 shadow-sm ${toneClass}`}>
-            <div className={`flex items-center gap-2 ${textClass}`}>
-                {icon}
-                <p className="text-xs font-semibold uppercase tracking-[0.12em]">
-                    {label}
-                </p>
-            </div>
-            <p className="mt-2 font-serif text-2xl font-semibold text-[#1A1220]">
-                {value}
+        <div className="rounded-2xl border border-[#E6DDF0] bg-white px-5 py-4 shadow-sm">
+            <p className="text-[11px] font-semibold text-[#806A8C]">
+                {label}
             </p>
+
+            <div className="mt-3">
+                {value}
+            </div>
         </div>
     );
 }
 
-export function InventoryStats({ products }: { products: Product[] }) {
+export function CombinedStockCard({
+                                      lowStock,
+                                      outStock,
+                                      onClick,
+                                  }: {
+    lowStock: number;
+    outStock: number;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="rounded-2xl border border-[#E6DDF0] bg-white px-5 py-4 text-left shadow-sm transition hover:border-[#F5D56B] hover:bg-[#FFFCF2] hover:shadow-md"
+        >
+            <div className="mb-3 flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-[#806A8C]">
+                    Stock Alerts
+                </p>
+
+                <AlertTriangle size={15} className="text-[#8A5A00]" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-[#F5D56B] bg-[#FFF8D8] px-3 py-2 text-center">
+                    <p className="text-[10px] font-semibold text-[#8A5A00]">
+                        Low Stock
+                    </p>
+
+                    <p className="mt-1 text-lg font-bold leading-none text-[#8A5A00]">
+                        {formatNumber(lowStock)}
+                    </p>
+                </div>
+
+                <div className="rounded-lg border border-[#F3A3A3] bg-[#FFE5E5] px-3 py-2 text-center">
+                    <p className="text-[10px] font-semibold text-[#9A2424]">
+                        Out of Stock
+                    </p>
+
+                    <p className="mt-1 text-lg font-bold leading-none text-[#9A2424]">
+                        {formatNumber(outStock)}
+                    </p>
+                </div>
+            </div>
+        </button>
+    );
+}
+
+function StockAlertsDialog({
+                               open,
+                               onClose,
+                               items,
+                               onRestock,
+                           }: {
+    open: boolean;
+    onClose: () => void;
+    items: StockAlertItem[];
+    onRestock?: (product: Product) => void;
+}) {
+    const [filter, setFilter] = React.useState<"all" | "low" | "out">("all");
+
+    if (!open) return null;
+
+    const lowCount = items.filter((item) => item.status === "Low Stock").length;
+    const outCount = items.filter((item) => item.status === "Out of Stock").length;
+
+    const filteredItems = items.filter((item) => {
+        if (filter === "low") return item.status === "Low Stock";
+        if (filter === "out") return item.status === "Out of Stock";
+        return true;
+    });
+
+    return (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+            <div className="w-full max-w-4xl rounded-2xl bg-white p-5 shadow-xl sm:p-6">
+                <div className="mb-4 flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF8D8] text-[#8A5A00]">
+                            <AlertTriangle size={20} />
+                        </div>
+
+                        <div>
+                            <h3 className="font-serif text-xl font-semibold text-[#1A1220]">
+                                Restock Alerts
+                            </h3>
+
+                            <p className="mt-1 text-sm text-[#6A5D6F]">
+                                Low stock and out of stock items that need restocking.
+                            </p>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="text-xl text-[#9B8AAA] hover:text-[#1A1220]"
+                    >
+                        ×
+                    </button>
+                </div>
+
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setFilter("all")}
+                        className={[
+                            "rounded-lg px-4 py-2 text-xs font-semibold",
+                            filter === "all"
+                                ? "bg-[#2B174C] text-white"
+                                : "border border-[#E6DDF0] bg-white text-[#6A5D6F] hover:bg-[#F7F1FF]",
+                        ].join(" ")}
+                    >
+                        All
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setFilter("low")}
+                        className={[
+                            "rounded-lg px-4 py-2 text-xs font-semibold",
+                            filter === "low"
+                                ? "bg-[#FFF8D8] text-[#8A5A00] ring-1 ring-[#F5D56B]"
+                                : "border border-[#E6DDF0] bg-white text-[#8A5A00] hover:bg-[#FFF8D8]",
+                        ].join(" ")}
+                    >
+                        Low Stock ({formatNumber(lowCount)})
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setFilter("out")}
+                        className={[
+                            "rounded-lg px-4 py-2 text-xs font-semibold",
+                            filter === "out"
+                                ? "bg-[#FFE5E5] text-[#9A2424] ring-1 ring-[#F3A3A3]"
+                                : "border border-[#E6DDF0] bg-white text-[#9A2424] hover:bg-[#FFE5E5]",
+                        ].join(" ")}
+                    >
+                        Out of Stock ({formatNumber(outCount)})
+                    </button>
+                </div>
+
+                <div className="max-h-[420px] overflow-y-auto rounded-xl border border-[#E6DDF0]">
+                    <table className="w-full table-fixed text-sm">
+                        <colgroup>
+                            <col className="w-[34%]" />
+                            <col className="w-[30%]" />
+                            <col className="w-[18%]" />
+                            <col className="w-[18%]" />
+                        </colgroup>
+
+                        <thead>
+                        <tr className="border-b border-[#E6DDF0] bg-[#FFFCF7]">
+                            {["Product", "Variant", "Current Stock", "Action"].map((head) => (
+                                <th
+                                    key={head}
+                                    className={`${head === "Product" ? "text-left" : "text-center"} px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#806A8C]`}
+                                >
+                                    {head}
+                                </th>
+                            ))}
+                        </tr>
+                        </thead>
+
+                        <tbody>
+                        {filteredItems.length === 0 ? (
+                            <tr>
+                                <td
+                                    colSpan={4}
+                                    className="px-3 py-8 text-center text-sm text-[#9B8AAA]"
+                                >
+                                    No stock alerts found.
+                                </td>
+                            </tr>
+                        ) : (
+                            filteredItems.map((item) => (
+                                <tr
+                                    key={item.id}
+                                    className="border-b border-[#EFE7F4] last:border-0"
+                                >
+                                    <td className="px-3 py-3 text-left">
+                                        <p className="truncate font-semibold text-[#1A1220]">
+                                            {item.productName}
+                                        </p>
+
+                                        <p
+                                            className={[
+                                                "mt-0.5 text-[11px] font-semibold",
+                                                item.status === "Out of Stock"
+                                                    ? "text-[#9A2424]"
+                                                    : "text-[#8A5A00]",
+                                            ].join(" ")}
+                                        >
+                                            {item.status}
+                                        </p>
+                                    </td>
+
+                                    <td className="px-3 py-3 text-center text-[#6A5D6F]">
+                                        <span className="block truncate">
+                                            {item.variantName}
+                                        </span>
+                                    </td>
+
+                                    <td
+                                        className={[
+                                            "px-3 py-3 text-center font-semibold",
+                                            item.status === "Out of Stock"
+                                                ? "text-[#9A2424]"
+                                                : "text-[#8A5A00]",
+                                        ].join(" ")}
+                                    >
+                                        {formatNumber(item.currentStock)}
+                                    </td>
+
+                                    <td className="px-3 py-3 text-center">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                onClose();
+                                                onRestock?.(item.product);
+                                            }}
+                                            className="rounded-lg border border-[#2B174C] px-3 py-1.5 text-xs font-semibold text-[#2B174C] hover:bg-[#F7F1FF]"
+                                        >
+                                            Restock
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export function InventoryStats({
+                                   products,
+                                   onRestock,
+                               }: {
+    products: Product[];
+    onRestock?: (product: Product) => void;
+}) {
+    const [showStockAlertsDialog, setShowStockAlertsDialog] = React.useState(false);
+
     const stockItems = getProductStockSummaryItems(products);
+    const alertItems = getStockAlertItems(products);
 
     const totalProducts = products.length;
-    const lowStock = stockItems.filter(
-        (item) => item.stock > 0 && item.stock <= item.alertLevel
+
+    const totalStock = products.reduce((sum, product) => {
+        const variants = Array.isArray(product.variants) ? product.variants : [];
+        const hasVariants = product.hasVariants && variants.length > 0;
+
+        if (hasVariants) {
+            return (
+                sum +
+                variants.reduce(
+                    (variantSum, variant) =>
+                        variantSum + Number(variant.stock || 0),
+                    0
+                )
+            );
+        }
+
+        return sum + Number(product.stock || 0);
+    }, 0);
+
+    const lowStock = alertItems.filter(
+        (item) => item.status === "Low Stock"
     ).length;
-    const outStock = stockItems.filter((item) => item.stock <= 0).length;
+
+    const outStock = alertItems.filter(
+        (item) => item.status === "Out of Stock"
+    ).length;
+
     const value = stockItems.reduce(
         (sum, item) => sum + item.salesPrice * item.stock,
         0
     );
 
     return (
-        <div className="grid gap-3 md:grid-cols-4">
-            <StatCard icon={<Boxes size={16} />} label="Items" value={totalProducts} />
-            <StatCard
-                icon={<AlertTriangle size={16} />}
-                label="Low Stock"
-                value={lowStock}
-                tone="low"
+        <>
+            <div className="grid gap-4 md:grid-cols-4">
+                <StatCard
+                    label="Products"
+                    value={
+                        <p className="font-serif text-[38px] font-semibold leading-none text-[#1A1220]">
+                            {formatNumber(totalProducts)}
+                        </p>
+                    }
+                />
+
+                <StatCard
+                    label="Total Stock"
+                    value={
+                        <p className="font-serif text-[38px] font-semibold leading-none text-[#1A1220]">
+                            {formatNumber(totalStock)}
+                        </p>
+                    }
+                />
+
+                <CombinedStockCard
+                    lowStock={lowStock}
+                    outStock={outStock}
+                    onClick={() => setShowStockAlertsDialog(true)}
+                />
+
+                <StatCard
+                    label="Inventory Value"
+                    value={
+                        <p className="font-serif text-[38px] font-semibold leading-none text-[#1A1220]">
+                            {money(value)}
+                        </p>
+                    }
+                />
+            </div>
+
+            <StockAlertsDialog
+                open={showStockAlertsDialog}
+                onClose={() => setShowStockAlertsDialog(false)}
+                items={alertItems}
+                onRestock={onRestock}
             />
-            <StatCard
-                icon={<ArchiveX size={16} />}
-                label="Out of Stock"
-                value={outStock}
-                tone="out"
-            />
-            <StatCard icon={<Boxes size={16} />} label="Value" value={money(value)} />
-        </div>
+        </>
     );
 }
 
@@ -987,7 +953,7 @@ export function CategoryPills({
     setSelectedCategory: (value: string) => void;
 }) {
     return (
-        <section className="rounded-[16px] border border-[#E6DDF0] bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-[#E6DDF0] bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-[#1A1220]">Categories</h2>
                 <span className="text-xs text-[#9B8AAA]">{categories.length} total</span>
@@ -1021,7 +987,7 @@ export function CategoryPills({
 
 export function EmptyInventory({ message }: { message: string }) {
     return (
-        <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-dashed border-[#E6DDF0] bg-[#FFFCF7]">
+        <div className="flex min-h-55 items-center justify-center rounded-xl border border-dashed border-[#E6DDF0] bg-[#FFFCF7]">
             <p className="text-sm text-[#9B8AAA]">{message}</p>
         </div>
     );
@@ -1038,9 +1004,7 @@ export function ProductTable({
     onEdit: (p: Product) => void;
     onDelete: (p: Product) => void;
 }) {
-    const [expandedProductIds, setExpandedProductIds] = React.useState<
-        Record<number, boolean>
-    >({});
+    const [expandedProductIds, setExpandedProductIds] = React.useState<Record<number, boolean>>({});
 
     const toggleExpanded = (productId: number) => {
         setExpandedProductIds((prev) => ({
@@ -1051,30 +1015,34 @@ export function ProductTable({
 
     const getVariantStatus = (variant: ProductVariant) => {
         if (variant.stock <= 0) return { label: "Out of Stock", style: STATUS_STYLE.out };
-        if (variant.stock <= variant.alertLevel) {
-            return { label: "Low Stock", style: STATUS_STYLE.low };
-        }
+        if (variant.stock <= variant.alertLevel) return { label: "Low Stock", style: STATUS_STYLE.low };
         return { label: "In Stock", style: STATUS_STYLE.in };
     };
 
     const getVariantLabel = (variant: ProductVariant) => {
         const values = Object.values(variant.variantValues || {}).filter(Boolean);
-        return values.length > 0 ? values.join(", ") : "Variant";
+        return values.length > 0 ? values.join(", ") : "Unnamed variant";
     };
 
     const getVariantAlertCounts = (variants: ProductVariant[]) => {
         const lowStock = variants.filter(
-            (variant) => variant.stock > 0 && variant.stock <= variant.alertLevel
+            (variant) =>
+                Number(variant.stock || 0) > 0 &&
+                Number(variant.stock || 0) <= Number(variant.alertLevel || 0)
         ).length;
-        const outStock = variants.filter((variant) => variant.stock <= 0).length;
+
+        const outStock = variants.filter(
+            (variant) => Number(variant.stock || 0) <= 0
+        ).length;
 
         return { lowStock, outStock };
     };
 
-    const getVariantTotalStock = (variants: ProductVariant[]) =>
-        variants.reduce((sum, variant) => sum + Number(variant.stock || 0), 0);
+    const getVariantTotalStock = (variants: ProductVariant[]) => {
+        return variants.reduce((sum, variant) => sum + Number(variant.stock || 0), 0);
+    };
 
-    const getVariantPriceRange = (
+    const getVariantPriceRangeValues = (
         variants: ProductVariant[],
         field: "originalPrice" | "salesPrice"
     ) => {
@@ -1082,39 +1050,79 @@ export function ProductTable({
             .map((variant) => Number(variant[field] || 0))
             .filter((price) => Number.isFinite(price));
 
-        if (prices.length === 0) return money(0);
+        if (prices.length === 0) {
+            return {
+                lowest: 0,
+                highest: 0,
+                isRange: false,
+            };
+        }
 
         const lowest = Math.min(...prices);
         const highest = Math.max(...prices);
 
-        return lowest === highest ? money(lowest) : `${money(lowest)} - ${money(highest)}`;
+        return {
+            lowest,
+            highest,
+            isRange: lowest !== highest,
+        };
     };
 
-    const getProductStatusForDisplay = (product: Product) => {
-        const variants = Array.isArray(product.variants) ? product.variants : [];
-        const hasVariants = product.hasVariants && variants.length > 0;
+    const renderPriceRange = (
+        variants: ProductVariant[],
+        field: "originalPrice" | "salesPrice"
+    ) => {
+        const { lowest, highest, isRange } = getVariantPriceRangeValues(variants, field);
 
-        if (!hasVariants) return getStatus(product);
+        if (!isRange) {
+            return <span>{money(lowest)}</span>;
+        }
 
-        const { lowStock, outStock } = getVariantAlertCounts(variants);
+        return (
+            <span className="whitespace-nowrap">
+                {money(lowest)} - {money(highest)}
+            </span>
+        );
+    };
 
-        if (outStock > 0) return { label: "Out of Stock", style: STATUS_STYLE.out };
-        if (lowStock > 0) return { label: "Low Stock", style: STATUS_STYLE.low };
-        return { label: "In Stock", style: STATUS_STYLE.in };
+    const getVariantTotalAlert = (variants: ProductVariant[]) => {
+        return variants.reduce(
+            (sum, variant) => sum + Number(variant.alertLevel || 0),
+            0
+        );
     };
 
     const renderProductAlert = (product: Product) => {
         const variants = Array.isArray(product.variants) ? product.variants : [];
         const hasVariants = product.hasVariants && variants.length > 0;
 
-        if (!hasVariants) return product.alertLevel;
+        if (hasVariants) {
+            return getVariantTotalAlert(variants);
+        }
+
+        return product.alertLevel;
+    };
+
+    const renderProductStatus = (product: Product) => {
+        const variants = Array.isArray(product.variants) ? product.variants : [];
+        const hasVariants = product.hasVariants && variants.length > 0;
+
+        if (!hasVariants) {
+            const status = getStatus(product);
+
+            return (
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${status.style}`}>
+                    {status.label}
+                </span>
+            );
+        }
 
         const { lowStock, outStock } = getVariantAlertCounts(variants);
 
         if (lowStock === 0 && outStock === 0) {
             return (
                 <span className="rounded-full bg-[#E6F6EA] px-2.5 py-1 text-[11px] font-semibold text-[#226B36]">
-                    Stable
+                    In Stock
                 </span>
             );
         }
@@ -1137,18 +1145,31 @@ export function ProductTable({
     };
 
     return (
-        <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[820px] text-xs sm:text-sm">
+        <div className="w-full overflow-hidden">
+            <table className="w-full table-fixed text-xs sm:text-sm">
+                <colgroup>
+                    <col className={isOwner ? "w-[19%]" : "w-[23%]"} />
+                    {isOwner ? <col className="w-[10%]" /> : null}
+                    <col className={isOwner ? "w-[12%]" : "w-[15%]"} />
+                    <col className="w-[9%]" />
+                    <col className="w-[7%]" />
+                    <col className="w-[7%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[13%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[9%]" />
+                </colgroup>
                 <thead>
                 <tr className="border-b border-[#E6DDF0]">
                     {[
                         "Product",
+                        ...(isOwner ? ["Branch"] : []),
                         "Category",
-                        "Variants",
+                        "Type",
                         "Stock",
                         "Alert",
-                        "Original",
-                        "Sales",
+                        "Cost Price",
+                        "Sales Price",
                         "Status",
                         "Actions",
                     ].map((head: string) => (
@@ -1167,7 +1188,6 @@ export function ProductTable({
                     const variants = Array.isArray(p.variants) ? p.variants : [];
                     const hasExpandableVariants = p.hasVariants && variants.length > 0;
                     const isExpanded = Boolean(expandedProductIds[p.id]);
-                    const status = getProductStatusForDisplay(p);
 
                     return (
                         <React.Fragment key={p.id}>
@@ -1181,11 +1201,7 @@ export function ProductTable({
                                                 className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#E6DDF0] bg-white text-[#2B174C] hover:bg-[#F7F1FF]"
                                                 title={isExpanded ? "Hide variants" : "Show variants"}
                                             >
-                                                {isExpanded ? (
-                                                    <ChevronDown size={14} />
-                                                ) : (
-                                                    <ChevronRight size={14} />
-                                                )}
+                                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                             </button>
                                         ) : (
                                             <span className="h-6 w-6 shrink-0" />
@@ -1206,18 +1222,24 @@ export function ProductTable({
                                     </div>
                                 </td>
 
+                                {isOwner && (
+                                    <td className="py-4 text-center text-[#6A5D6F]">
+                                        {p.branchName || "Unassigned"}
+                                    </td>
+                                )}
+
                                 <td className="py-4 text-center text-[#6A5D6F]">
                                     {p.category}
                                 </td>
 
                                 <td className="py-4 text-center text-[#6A5D6F]">
-                                    {hasExpandableVariants ? variants.length : "No"}
+                                    {hasExpandableVariants
+                                        ? `${variants.length} variant${variants.length !== 1 ? "s" : ""}`
+                                        : "Regular"}
                                 </td>
 
                                 <td className="py-4 text-center text-[#1A1220]">
-                                    {hasExpandableVariants
-                                        ? getVariantTotalStock(variants)
-                                        : p.stock}
+                                    {hasExpandableVariants ? getVariantTotalStock(variants) : p.stock}
                                 </td>
 
                                 <td className="py-4 text-center text-[#6A5D6F]">
@@ -1226,22 +1248,18 @@ export function ProductTable({
 
                                 <td className="py-4 text-center text-[#6A5D6F]">
                                     {hasExpandableVariants
-                                        ? getVariantPriceRange(variants, "originalPrice")
+                                        ? renderPriceRange(variants, "originalPrice")
                                         : money(p.originalPrice)}
                                 </td>
 
                                 <td className="py-4 text-center text-[#1A1220]">
                                     {hasExpandableVariants
-                                        ? getVariantPriceRange(variants, "salesPrice")
+                                        ? renderPriceRange(variants, "salesPrice")
                                         : money(p.salesPrice)}
                                 </td>
 
                                 <td className="py-4 text-center">
-                                    <span
-                                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${status.style}`}
-                                    >
-                                        {status.label}
-                                    </span>
+                                    {renderProductStatus(p)}
                                 </td>
 
                                 <td className="py-4 text-center">
@@ -1263,60 +1281,74 @@ export function ProductTable({
                                 </td>
                             </tr>
 
-                            {hasExpandableVariants &&
-                                isExpanded &&
-                                variants.map((variant: ProductVariant) => {
-                                    const variantStatus = getVariantStatus(variant);
+                            {hasExpandableVariants && isExpanded && variants.map((variant: ProductVariant, index: number) => {
+                                const variantStatus = getVariantStatus(variant);
+                                const isFirstVariant = index === 0;
+                                const isLastVariant = index === variants.length - 1;
 
-                                    return (
-                                        <tr
-                                            key={variant.id}
-                                            className="border-b border-[#EFE7F4] bg-[#FFFCF7]"
-                                        >
-                                            <td className="py-3 pr-3">
-                                                <div className="ml-8 rounded-xl bg-[#F7F1FF] px-3 py-2">
-                                                    <p className="text-xs font-semibold text-[#2B174C]">
-                                                        {getVariantLabel(variant)}
-                                                    </p>
+                                return (
+                                    <tr
+                                        key={variant.id}
+                                        className="border-b border-[#E6DDF0] bg-[#F7F1FF]"
+                                    >
+                                        <td className="py-3 pr-3">
+                                            <div className="ml-8 flex items-center gap-3">
+                                                <div className="relative flex h-9 w-5 shrink-0 justify-center">
+                                                    {!isFirstVariant && (
+                                                        <span className="absolute -top-3 h-6 border-l border-dashed border-[#B99DDB]" />
+                                                    )}
+
+                                                    {!isLastVariant && (
+                                                        <span className="absolute top-5 h-8 border-l border-dashed border-[#B99DDB]" />
+                                                    )}
+
+                                                    <span className="relative z-10 mt-3 h-2.5 w-2.5 rounded-full bg-[#9B6BD3]" />
                                                 </div>
-                                            </td>
 
+                                                <p className="text-xs font-semibold text-[#2B174C]">
+                                                    {getVariantLabel(variant)}
+                                                </p>
+                                            </div>
+                                        </td>
+
+                                        {isOwner && (
                                             <td className="py-3 text-center text-[#9B8AAA]" />
+                                        )}
 
-                                            <td className="py-3 text-center">
-                                                <span className="rounded-full bg-[#F7F1FF] px-2 py-1 text-[11px] font-semibold text-[#4E2C66]">
-                                                    Variant
-                                                </span>
-                                            </td>
+                                        <td className="py-3 text-center text-[#9B8AAA]">
+                                            —
+                                        </td>
 
-                                            <td className="py-3 text-center text-[#1A1220]">
-                                                {variant.stock}
-                                            </td>
+                                        <td className="py-3 text-center text-[#6A5D6F]">
+                                            Variant
+                                        </td>
 
-                                            <td className="py-3 text-center text-[#6A5D6F]">
-                                                {variant.alertLevel}
-                                            </td>
+                                        <td className="py-3 text-center text-[#1A1220]">
+                                            {variant.stock}
+                                        </td>
 
-                                            <td className="py-3 text-center text-[#6A5D6F]">
-                                                {money(variant.originalPrice)}
-                                            </td>
+                                        <td className="py-3 text-center text-[#6A5D6F]">
+                                            {variant.alertLevel}
+                                        </td>
 
-                                            <td className="py-3 text-center text-[#1A1220]">
-                                                {money(variant.salesPrice)}
-                                            </td>
+                                        <td className="py-3 text-center text-[#6A5D6F]">
+                                            {money(variant.originalPrice)}
+                                        </td>
 
-                                            <td className="py-3 text-center">
-                                                <span
-                                                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${variantStatus.style}`}
-                                                >
-                                                    {variantStatus.label}
-                                                </span>
-                                            </td>
+                                        <td className="py-3 text-center text-[#1A1220]">
+                                            {money(variant.salesPrice)}
+                                        </td>
 
-                                            <td className="py-3 text-center" />
-                                        </tr>
-                                    );
-                                })}
+                                        <td className="py-3 text-center">
+                                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${variantStatus.style}`}>
+                                                {variantStatus.label}
+                                            </span>
+                                        </td>
+
+                                        <td className="py-3 text-center" />
+                                    </tr>
+                                );
+                            })}
                         </React.Fragment>
                     );
                 })}
@@ -1325,7 +1357,6 @@ export function ProductTable({
         </div>
     );
 }
-
 export function ProductListSection({
                                        title,
                                        products,
@@ -1342,7 +1373,7 @@ export function ProductListSection({
     onDelete: (p: Product) => void;
 }) {
     return (
-        <section className="rounded-[16px] border border-[#E6DDF0] bg-white p-4 shadow-sm">
+        <section className="rounded-2xl border border-[#E6DDF0] bg-white p-4 shadow-sm">
             <div className="mb-4">
                 <h2 className="font-serif text-base font-semibold text-[#1A1220]">
                     {title}
@@ -1394,28 +1425,12 @@ export function BranchInventoryView({
         }
     }, [selectedBranch]);
 
-    const selectedBranchId =
-        selectedBranch?.id ??
-        (inv as any).selectedBranchId ??
-        (inv as any).branchId ??
-        (inv as any).assignedBranchId ??
-        (inv as any).productBranchId ??
-        getRememberedBranch().id ??
-        null;
-
-    const selectedBranchName =
-        selectedBranch?.branchName ??
-        (inv as any).selectedBranchName ??
-        (inv as any).assignedBranchName ??
-        getRememberedBranch().name ??
-        title ??
-        null;
-
-    const storeId = (inv as any).storeId ?? (inv as any).selectedStoreId ?? null;
-
     return (
         <div className="space-y-4">
-            <InventoryStats products={inv.baseProducts} />
+            <InventoryStats
+                products={inv.baseProducts}
+                onRestock={inv.handleEditProduct}
+            />
 
             <SearchAndActions
                 search={inv.search}
@@ -1423,10 +1438,7 @@ export function BranchInventoryView({
                 isOwner={false}
                 onManageCategories={inv.openManageCategories}
                 onAddProduct={inv.openAddProduct}
-                branches={branches}
-                selectedBranchId={selectedBranchId}
-                selectedBranchName={selectedBranchName}
-                storeId={storeId}
+                onUploadFile={inv.openImportDialog}
             />
 
             <CategoryPills
@@ -1461,7 +1473,7 @@ export function InventoryDialogs({ inv }: { inv: InventoryController }) {
                         className={[
                             "w-full rounded-2xl bg-white p-5 shadow-xl sm:p-6",
                             inv.formMode === "category"
-                                ? "h-[560px] max-h-[88vh] max-w-5xl overflow-hidden"
+                                ? "h-140 max-h-[88vh] max-w-5xl overflow-hidden"
                                 : "max-h-[90vh] max-w-5xl overflow-y-auto",
                         ].join(" ")}
                     >
@@ -1483,7 +1495,7 @@ export function InventoryDialogs({ inv }: { inv: InventoryController }) {
                         </div>
 
                         <form
-                            onSubmit={(e: React.FormEvent<HTMLFormElement>) => {
+                            onSubmit={(e) => {
                                 if (inv.formMode === "product") inv.handleSubmitProduct(e);
                                 else e.preventDefault();
                             }}
@@ -1504,7 +1516,7 @@ export function InventoryDialogs({ inv }: { inv: InventoryController }) {
             )}
 
             {inv.showConfirmProductSaveDialog && inv.pendingProductSave && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
                     <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl sm:p-6">
                         <div className="mb-3 flex items-start justify-between gap-4">
                             <div>
@@ -1544,8 +1556,246 @@ export function InventoryDialogs({ inv }: { inv: InventoryController }) {
                 </div>
             )}
 
+
+            {inv.showImportDialog && (
+                <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                    <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl sm:p-6">
+                        <div className="mb-4 flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="font-serif text-xl font-semibold text-[#1A1220]">
+                                    Upload Inventory File
+                                </h3>
+                                <p className="mt-1 text-sm text-[#6A5D6F]">
+                                    Select an Excel or CSV file. Products will not be added yet.
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={inv.closeImportDialog}
+                                className="text-[#9B8AAA] hover:text-[#1A1220]"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <input
+                            type="file"
+                            accept=".xlsx,.xls,.csv"
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                inv.setSelectedImportFile(e.target.files?.[0] || null)
+                            }
+                            className="w-full rounded-xl border border-[#E3D8EA] bg-white p-3 text-sm text-[#1A1220] file:mr-4 file:rounded-lg file:border-0 file:bg-[#2B174C] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
+                        />
+
+                        {inv.selectedImportFile && (
+                            <p className="mt-2 text-xs text-[#6A5D6F]">
+                                Selected:{" "}
+                                <span className="font-semibold text-[#1A1220]">
+                                    {inv.selectedImportFile.name}
+                                </span>
+                            </p>
+                        )}
+
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={inv.closeImportDialog}
+                                className="rounded-xl border border-[#E6DDF0] bg-white px-4 py-2 text-sm font-medium text-[#6A5D6F] hover:bg-[#F7F1FF]"
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                disabled={inv.isImporting || !inv.selectedImportFile}
+                                onClick={() => void inv.importProductsFromExcel()}
+                                className="rounded-xl bg-[#2B174C] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1B0D31] disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                {inv.isImporting ? "Reading..." : "Preview Import"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {inv.showImportConfirmDialog && (
+                <div className="fixed inset-0 z-80 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                    <div className="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl sm:p-6">
+                        <div className="mb-4 flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="font-serif text-xl font-semibold text-[#1A1220]">
+                                    Confirm Imported Products
+                                </h3>
+                                <p className="mt-1 text-sm text-[#6A5D6F]">
+                                    Review the products below before adding them to the system.
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={inv.closeImportDialog}
+                                className="text-[#9B8AAA] hover:text-[#1A1220]"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-xl border border-[#E6DDF0]">
+                            <table className="w-full min-w-245 text-sm">
+                                <thead>
+                                <tr className="border-b border-[#E6DDF0] bg-[#FFFCF7]">
+                                    {[
+                                        "Product",
+                                        "Category",
+                                        "Stock",
+                                        "Alert",
+                                        "Original",
+                                        "Sales",
+                                        "Type",
+                                    ].map((head) => (
+                                        <th
+                                            key={head}
+                                            className={`${head === "Product" ? "text-left" : "text-center"} px-1 pb-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#806A8C]`}                                        >
+                                            {head}
+                                        </th>
+                                    ))}
+                                </tr>
+                                </thead>
+
+                                <tbody>
+                                {inv.importPreviewProducts.map((product) => {
+                                    const variants = product.variants || [];
+
+                                    return (
+                                        <React.Fragment key={product.tempId}>
+                                            <tr className="border-b border-[#EFE7F4]">
+                                                <td className="px-3 py-4">
+                                                    <p className="font-serif text-sm font-semibold text-[#1A1220]">
+                                                        {product.name || "Unnamed Product"}
+                                                    </p>
+                                                    {product.hasVariants && (
+                                                        <p className="mt-1 text-xs font-medium text-[#806A8C]">
+                                                            {variants.length} variant{variants.length !== 1 ? "s" : ""}
+                                                        </p>
+                                                    )}
+                                                </td>
+
+                                                <td className="px-3 py-4 text-center text-[#6A5D6F]">
+                                                    {product.category || "Uncategorized"}
+                                                </td>
+
+                                                <td className="px-3 py-4 text-center text-[#1A1220]">
+                                                    {Number(product.stock || 0)}
+                                                </td>
+
+                                                <td className="px-3 py-4 text-center text-[#6A5D6F]">
+                                                    {Number(product.alertLevel || 0)}
+                                                </td>
+
+                                                <td className="px-3 py-4 text-center text-[#6A5D6F]">
+                                                    {money(Number(product.originalPrice || 0))}
+                                                </td>
+
+                                                <td className="px-3 py-4 text-center font-semibold text-[#1A1220]">
+                                                    {money(Number(product.salesPrice || 0))}
+                                                </td>
+
+                                                <td className="px-3 py-4 text-center">
+                                                    <span className="rounded-full bg-[#F7F1FF] px-3 py-1 text-xs font-semibold text-[#4E2C66]">
+                                                        {product.hasVariants ? "With Variants" : "Regular"}
+                                                    </span>
+                                                </td>
+                                            </tr>
+
+                                            {product.hasVariants && variants.map((variant, variantIndex) => {
+                                                const variantName = Object.values(variant.variantValues || {})
+                                                    .filter(Boolean)
+                                                    .join(" / ") || `Variant ${variantIndex + 1}`;
+
+                                                return (
+                                                    <tr
+                                                        key={`${product.tempId}-variant-${variantIndex}`}
+                                                        className="border-b border-[#EFE7F4] bg-[#FFFCF7] last:border-0"
+                                                    >
+                                                        <td className="px-3 py-3">
+                                                            <div className="ml-6 rounded-xl bg-white px-3 py-2 ring-1 ring-[#E6DDF0]">
+                                                                <p className="text-sm font-semibold text-[#2B174C]">
+                                                                    {variantName}
+                                                                </p>
+                                                            </div>
+                                                        </td>
+
+                                                        <td className="px-3 py-3 text-center text-[#9B8AAA]">
+                                                            Variant
+                                                        </td>
+
+                                                        <td className="px-3 py-3 text-center text-[#1A1220]">
+                                                            {Number(variant.stock || 0)}
+                                                        </td>
+
+                                                        <td className="px-3 py-3 text-center text-[#6A5D6F]">
+                                                            {Number(variant.alertLevel || 0)}
+                                                        </td>
+
+                                                        <td className="px-3 py-3 text-center text-[#6A5D6F]">
+                                                            {money(Number(variant.originalPrice || 0))}
+                                                        </td>
+
+                                                        <td className="px-3 py-3 text-center font-semibold text-[#1A1220]">
+                                                            {money(Number(variant.salesPrice || 0))}
+                                                        </td>
+
+                                                        <td className="px-3 py-3 text-center">
+                                                            <span className="rounded-full bg-[#F7F1FF] px-3 py-1 text-xs font-semibold text-[#4E2C66]">
+                                                                Variant
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </React.Fragment>
+                                    );
+                                })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    inv.setShowImportConfirmDialog(false);
+                                    inv.setShowImportDialog(true);
+                                }}
+                                className="rounded-xl border border-[#E6DDF0] bg-white px-4 py-2 text-sm font-medium text-[#6A5D6F] hover:bg-[#F7F1FF]"
+                            >
+                                Back
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={inv.closeImportDialog}
+                                className="rounded-xl border border-[#E6DDF0] bg-white px-4 py-2 text-sm font-medium text-[#6A5D6F] hover:bg-[#F7F1FF]"
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                disabled={inv.isImporting || inv.importPreviewProducts.length === 0}
+                                onClick={() => void inv.confirmImportProducts()}
+                                className="rounded-xl bg-[#2B174C] px-5 py-2 text-sm font-semibold text-white hover:bg-[#1B0D31] disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                {inv.isImporting ? "Importing..." : "Confirm Import"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {inv.showDeleteProductDialog && inv.productToDelete && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
                     <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl sm:p-6">
                         <h3 className="font-serif text-lg font-semibold text-[#1A1220]">
                             Delete Product
@@ -1688,7 +1938,7 @@ function CategoryForm({ inv }: { inv: InventoryController }) {
     return (
         <>
             {showAddCategoryDialog && (
-                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                <div className="fixed inset-0 z-80 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
                     <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
                         <h3 className="font-serif text-lg font-semibold text-[#1A1220]">
                             Add Category
@@ -1785,7 +2035,7 @@ function CategoryForm({ inv }: { inv: InventoryController }) {
             </div>
 
             {showEditCategoryDialog && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
                     <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
                         <div className="mb-4 flex items-start justify-between gap-3">
                             <div>
@@ -1840,7 +2090,7 @@ function CategoryForm({ inv }: { inv: InventoryController }) {
             )}
 
             {showConfirmEditCategoryDialog && (
-                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                <div className="fixed inset-0 z-80 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
                     <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
                         <h3 className="font-serif text-lg font-semibold text-[#1A1220]">
                             Confirm Category Update
@@ -1891,7 +2141,7 @@ function CategoryForm({ inv }: { inv: InventoryController }) {
             )}
 
             {showCannotDeleteCategoryDialog && (
-                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                <div className="fixed inset-0 z-80 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
                     <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
                         <h3 className="font-serif text-lg font-semibold text-[#1A1220]">
                             Cannot Delete Category
@@ -1924,7 +2174,7 @@ function CategoryForm({ inv }: { inv: InventoryController }) {
             )}
 
             {showDeleteCategoryDialog && (
-                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                <div className="fixed inset-0 z-80 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
                     <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
                         <h3 className="font-serif text-lg font-semibold text-[#1A1220]">
                             Delete Category
@@ -2154,10 +2404,114 @@ function SimpleProductFields({ inv }: { inv: InventoryController }) {
 
 function VariantEditor({ inv }: { inv: VariantEditorController }) {
     const [variantColumnInput, setVariantColumnInput] = React.useState("");
-    const [variantColumns, setVariantColumns] = React.useState<string[]>(["size"]);
+    const [variantColumns, setVariantColumns] = React.useState<string[]>([]);
     const hasAddedInitialRow = React.useRef(false);
+    const lastEditorKey = React.useRef<string | null>(null);
 
     const variants = Array.isArray(inv.variants) ? inv.variants : [];
+
+    const getColumnsFromVariants = React.useCallback(
+        (rows: ProductVariantSave[]) => {
+            const columns: string[] = [];
+
+            rows.forEach((variant) => {
+                Object.entries(variant.variantValues || {}).forEach(([key, value]) => {
+                    const cleanKey = String(key || "").trim();
+                    const cleanValue = String(value || "").trim();
+
+                    if (!cleanKey || !cleanValue) return;
+
+                    const alreadyExists = columns.some(
+                        (column) => column.toLowerCase() === cleanKey.toLowerCase()
+                    );
+
+                    if (!alreadyExists) {
+                        columns.push(cleanKey.toLowerCase());
+                    }
+                });
+            });
+
+            return columns;
+        },
+        []
+    );
+
+    const getVariantInputValue = (
+        values: Record<string, string> | undefined,
+        column: string
+    ) => {
+        if (!values) return "";
+
+        const directValue = values[column];
+
+        if (directValue !== undefined && directValue !== null) {
+            return String(directValue);
+        }
+
+        const matchedKey = Object.keys(values).find(
+            (key) => key.toLowerCase() === column.toLowerCase()
+        );
+
+        return matchedKey ? String(values[matchedKey] || "") : "";
+    };
+
+    const variantKeySignature = React.useMemo(
+        () =>
+            variants
+                .map((variant) =>
+                    Object.keys(variant.variantValues || {})
+                        .map((key) => String(key || "").trim().toLowerCase())
+                        .filter(Boolean)
+                        .sort((a, b) => a.localeCompare(b))
+                        .join("|")
+                )
+                .join("||"),
+        [variants]
+    );
+
+    React.useEffect(() => {
+        const editorKey = `${inv.editingId ?? "new"}-${
+            inv.hasVariants ? "variants" : "simple"
+        }`;
+
+        if (lastEditorKey.current !== editorKey) {
+            lastEditorKey.current = editorKey;
+            hasAddedInitialRow.current = variants.length > 0;
+
+            const inferredColumns = getColumnsFromVariants(variants);
+            setVariantColumns(inferredColumns);
+            return;
+        }
+
+        if (variants.length > 0) {
+            const inferredColumns = getColumnsFromVariants(variants);
+
+            if (inferredColumns.length === 0) return;
+
+            setVariantColumns((prev) => {
+                const merged = [...prev];
+
+                inferredColumns.forEach((column) => {
+                    const alreadyExists = merged.some(
+                        (item) => item.toLowerCase() === column.toLowerCase()
+                    );
+
+                    if (!alreadyExists) {
+                        merged.push(column);
+                    }
+                });
+
+                return merged;
+            });
+        }
+    }, [
+        getColumnsFromVariants,
+        inv.editingId,
+        inv.hasVariants,
+        variantKeySignature,
+        variants,
+        variants.length,
+    ]);
 
     React.useEffect(() => {
         if (!hasAddedInitialRow.current && variants.length === 0) {
@@ -2187,7 +2541,11 @@ function VariantEditor({ inv }: { inv: VariantEditorController }) {
     };
 
     const removeVariantColumn = (columnToRemove: string) => {
-        setVariantColumns((prev) => prev.filter((col) => col !== columnToRemove));
+        setVariantColumns((prev) =>
+            prev.filter(
+                (col) => col.toLowerCase() !== columnToRemove.toLowerCase()
+            )
+        );
 
         variants.forEach((_variant, index) => {
             inv.updateVariantValue(index, columnToRemove, "");
@@ -2197,7 +2555,9 @@ function VariantEditor({ inv }: { inv: VariantEditorController }) {
     return (
         <div className="rounded-2xl border border-[#E6DDF0] bg-white p-5 shadow-sm">
             <div>
-                <p className="text-sm font-semibold text-[#1A1220]">Variant Matrix</p>
+                <p className="text-sm font-semibold text-[#1A1220]">
+                    Variant Matrix
+                </p>
                 <p className="text-xs text-[#9B8AAA]">
                     Add columns like Color, Size, Packaging, etc.
                 </p>
@@ -2209,6 +2569,12 @@ function VariantEditor({ inv }: { inv: VariantEditorController }) {
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                         setVariantColumnInput(e.target.value)
                     }
+                    onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                        if (e.key === "Enter") {
+                            e.preventDefault();
+                            addVariantColumn();
+                        }
+                    }}
                     className={fieldClass}
                     placeholder="Variant column name"
                 />
@@ -2225,23 +2591,30 @@ function VariantEditor({ inv }: { inv: VariantEditorController }) {
             <div className="mt-4 flex items-center gap-3">
                 <div className="min-w-0 flex-1 overflow-x-auto">
                     <div className="flex w-max gap-2 pb-1">
-                        {variantColumns.map((col: string) => (
-                            <div
-                                key={col}
-                                className="flex shrink-0 items-center gap-2 rounded-full bg-[#F7F1FF] px-4 py-2 text-xs font-semibold text-[#2B174C]"
-                            >
-                                <span>{col}</span>
-                                <button
-                                    type="button"
-                                    onClick={() => removeVariantColumn(col)}
-                                    className="flex h-4 w-4 items-center justify-center rounded-full text-[12px] font-bold text-[#2B174C] hover:bg-[#E6DDF0]"
-                                    aria-label={`Remove ${col} column`}
-                                    title={`Remove ${col}`}
+                        {variantColumns.length === 0 ? (
+                            <p className="text-xs font-semibold text-red-500">
+                                No variant column yet. Add something like color, size, or packaging.
+                            </p>
+                        ) : (
+                            variantColumns.map((col: string) => (
+                                <div
+                                    key={col}
+                                    className="flex shrink-0 items-center gap-2 rounded-full bg-[#F7F1FF] px-4 py-2 text-xs font-semibold text-[#2B174C]"
                                 >
-                                    ×
-                                </button>
-                            </div>
-                        ))}
+                                    <span>{col}</span>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => removeVariantColumn(col)}
+                                        className="flex h-4 w-4 items-center justify-center rounded-full text-[12px] font-bold text-[#2B174C] hover:bg-[#E6DDF0]"
+                                        aria-label={`Remove ${col} column`}
+                                        title={`Remove ${col}`}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
 
@@ -2255,7 +2628,7 @@ function VariantEditor({ inv }: { inv: VariantEditorController }) {
             </div>
 
             <div className="mt-5 overflow-x-auto">
-                <table className="w-full min-w-[900px] text-sm">
+                <table className="w-full min-w-225 text-sm">
                     <thead>
                     <tr className="border-b border-[#E6DDF0]">
                         {variantColumns.map((col: string) => (
@@ -2270,15 +2643,19 @@ function VariantEditor({ inv }: { inv: VariantEditorController }) {
                         <th className="pb-2 pr-2 text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-[#806A8C]">
                             Stocks
                         </th>
+
                         <th className="pb-2 pr-2 text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-[#806A8C]">
                             Alert
                         </th>
+
                         <th className="pb-2 pr-2 text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-[#806A8C]">
                             Original Price
                         </th>
+
                         <th className="pb-2 pr-2 text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-[#806A8C]">
                             Sales Price
                         </th>
+
                         <th className="pb-2 text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-[#806A8C]">
                             Action
                         </th>
@@ -2292,10 +2669,19 @@ function VariantEditor({ inv }: { inv: VariantEditorController }) {
                                 <td key={col} className="py-2 pr-2">
                                     <input
                                         className={fieldClass}
-                                        value={variant.variantValues?.[col] || ""}
+                                        value={getVariantInputValue(
+                                            variant.variantValues,
+                                            col
+                                        )}
                                         placeholder={`Enter ${col}`}
-                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                            inv.updateVariantValue(index, col, e.target.value)
+                                        onChange={(
+                                            e: React.ChangeEvent<HTMLInputElement>
+                                        ) =>
+                                            inv.updateVariantValue(
+                                                index,
+                                                col,
+                                                e.target.value
+                                            )
                                         }
                                     />
                                 </td>
@@ -2348,7 +2734,11 @@ function VariantEditor({ inv }: { inv: VariantEditorController }) {
                                 <PesoPriceInput
                                     value={variant.salesPrice}
                                     onChange={(value) =>
-                                        inv.updateVariantField(index, "salesPrice", value)
+                                        inv.updateVariantField(
+                                            index,
+                                            "salesPrice",
+                                            value
+                                        )
                                     }
                                 />
                             </td>

@@ -10,6 +10,7 @@ const dbConfig = {
     database: "stocknbook",
     ssl: { rejectUnauthorized: false },
 };
+
 function jsonResponse(statusCode, headers, body) {
     return {
         statusCode,
@@ -87,7 +88,7 @@ function cleanVariantValues(value) {
     const cleaned = {};
 
     Object.entries(rawValues).forEach(([key, val]) => {
-        const cleanKey = String(key || "").trim();
+        const cleanKey = String(key || "").trim().toLowerCase();
         const cleanValue = String(val || "").trim();
 
         if (cleanKey && cleanValue) {
@@ -229,14 +230,14 @@ async function attachVariants(connection, products) {
 
     const [variantRows] = await connection.execute(
         `SELECT
-            id,
-            product_id AS productId,
-            variant_values AS variantValues,
-            stock,
-            alert_level AS alertLevel,
-            original_price AS originalPrice,
-            sales_price AS salesPrice,
-            created_at AS createdAt
+             id,
+             product_id AS productId,
+             variant_values AS variantValues,
+             stock,
+             alert_level AS alertLevel,
+             original_price AS originalPrice,
+             sales_price AS salesPrice,
+             created_at AS createdAt
          FROM product_variants
          WHERE product_id IN (${placeholders})
          ORDER BY id ASC`,
@@ -287,9 +288,9 @@ async function getProducts(connection, storeId, activeBranchId, productId = null
             products.has_variants AS hasVariants,
             products.created_at AS createdAt
         FROM products
-        LEFT JOIN branches
-            ON products.branch_id = branches.id
-            AND products.store_id = branches.store_id
+                 LEFT JOIN branches
+                           ON products.branch_id = branches.id
+                               AND products.store_id = branches.store_id
         WHERE products.store_id = ?
     `;
 
@@ -333,9 +334,92 @@ async function insertProductVariants(connection, productId, variants) {
 
     await connection.execute(
         `INSERT INTO product_variants
-            (product_id, variant_values, stock, alert_level, original_price, sales_price)
+         (product_id, variant_values, stock, alert_level, original_price, sales_price)
          VALUES ${placeholders}`,
         params
+    );
+}
+
+/* DUPLICATE VALIDATION HELPERS */
+
+function normalizeDuplicateText(value) {
+    return String(value ?? "")
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+}
+
+function getVariantSignature(values) {
+    const entries = Object.entries(values || {})
+        .map(([key, value]) => [
+            normalizeDuplicateText(key),
+            normalizeDuplicateText(value),
+        ])
+        .filter(([, value]) => value.length > 0)
+        .sort(([keyA, valueA], [keyB, valueB]) => {
+            const keyCompare = keyA.localeCompare(keyB);
+            return keyCompare !== 0 ? keyCompare : valueA.localeCompare(valueB);
+        });
+
+    if (entries.length === 0) return "";
+
+    return entries.map(([key, value]) => `${key}:${value}`).join("|");
+}
+
+function getVariantDisplayName(values) {
+    return (
+        Object.values(values || {})
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+            .join(", ") || "Unnamed variant"
+    );
+}
+
+function getDuplicateVariantLabel(variants) {
+    const seen = new Map();
+
+    for (const variant of variants || []) {
+        const signature = getVariantSignature(variant.variantValues);
+
+        if (!signature) continue;
+
+        const displayName = getVariantDisplayName(variant.variantValues);
+
+        if (seen.has(signature)) {
+            return displayName;
+        }
+
+        seen.set(signature, displayName);
+    }
+
+    return "";
+}
+
+async function findExistingProductByName(
+    connection,
+    storeId,
+    branchId,
+    productName,
+    excludeProductId = null
+) {
+    const [rows] = await connection.execute(
+        `SELECT id, name
+         FROM products
+         WHERE store_id = ?
+           AND branch_id = ?`,
+        [storeId, branchId]
+    );
+
+    const cleanName = normalizeDuplicateText(productName);
+
+    return (
+        rows.find((row) => {
+            const sameName = normalizeDuplicateText(row.name) === cleanName;
+            const notCurrentProduct =
+                !excludeProductId || Number(row.id) !== Number(excludeProductId);
+
+            return sameName && notCurrentProduct;
+        }) || null
     );
 }
 
@@ -461,6 +545,31 @@ exports.handler = async (event) => {
                 return badRequest(headers, "Please add at least one valid variant");
             }
 
+            const existingProduct = await findExistingProductByName(
+                connection,
+                storeId,
+                activeBranchId,
+                name
+            );
+
+            if (existingProduct) {
+                return badRequest(
+                    headers,
+                    `Product "${name}" already exists in this branch.`
+                );
+            }
+
+            const duplicateVariantLabel = hasVariants
+                ? getDuplicateVariantLabel(incomingVariants)
+                : "";
+
+            if (duplicateVariantLabel) {
+                return badRequest(
+                    headers,
+                    `Variant "${duplicateVariantLabel}" already exists in this product.`
+                );
+            }
+
             const stock = hasVariants
                 ? getVariantTotalStock(incomingVariants)
                 : toNumber(firstDefined(body.stock, body.quantity, body.qty)) ?? 0;
@@ -549,6 +658,32 @@ exports.handler = async (event) => {
 
             if (hasVariants && incomingVariants.length === 0) {
                 return badRequest(headers, "Please add at least one valid variant");
+            }
+
+            const duplicateProduct = await findExistingProductByName(
+                connection,
+                storeId,
+                activeBranchId,
+                name,
+                id
+            );
+
+            if (duplicateProduct) {
+                return badRequest(
+                    headers,
+                    `Product "${name}" already exists in this branch.`
+                );
+            }
+
+            const duplicateVariantLabel = hasVariants
+                ? getDuplicateVariantLabel(incomingVariants)
+                : "";
+
+            if (duplicateVariantLabel) {
+                return badRequest(
+                    headers,
+                    `Variant "${duplicateVariantLabel}" already exists in this product.`
+                );
             }
 
             const stock = hasVariants

@@ -531,69 +531,6 @@ export function usePOS() {
                 return;
             }
 
-            for (const ci of cartItems) {
-                const newStock = Math.max(0, Number(ci.stock) - Number(ci.qty));
-
-                if (ci.isVariant && ci.variantId) {
-                    const updateVariantRes = await fetch("/api/products", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`,
-                        },
-                        body: JSON.stringify({
-                            action: "update_product_variant_stock",
-                            product_id: ci.productId,
-                            variant_id: ci.variantId,
-                            branch_id: Number(ci.branchId || activeBranchId),
-                            stock: newStock,
-                        }),
-                    });
-
-                    if (!updateVariantRes.ok) {
-                        const data = await updateVariantRes
-                            .json()
-                            .catch(() => ({} as { error?: string }));
-
-                        alert(data?.error || `Failed to deduct stock for ${ci.name}`);
-                        return;
-                    }
-
-                    continue;
-                }
-
-                const product = products.find((p) => p.id === ci.productId);
-                if (!product) continue;
-
-                const updateRes = await fetch("/api/products", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        action: "update_product",
-                        id: product.id,
-                        branch_id: Number(product.branchId || activeBranchId),
-                        name: product.name,
-                        category: product.category,
-                        stock: newStock,
-                        alertLevel: Number(product.alertLevel || 0),
-                        originalPrice: Number(product.originalPrice || 0),
-                        salesPrice: Number(product.salesPrice || 0),
-                    }),
-                });
-
-                if (!updateRes.ok) {
-                    const data = await updateRes
-                        .json()
-                        .catch(() => ({} as { error?: string }));
-
-                    alert(data?.error || `Failed to deduct stock for ${ci.name}`);
-                    return;
-                }
-            }
-
             const refreshRes = await fetch("/api/products", {
                 method: "POST",
                 headers: {
