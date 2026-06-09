@@ -160,6 +160,8 @@ export default function ManagerPackages() {
                 status={form.status} setStatus={form.setStatus}
                 discountType={form.discountType} setDiscountType={form.setDiscountType}
                 discountValue={form.discountValue} setDiscountValue={form.setDiscountValue}
+                downPaymentAmount={form.downPaymentAmount}
+                setDownPaymentAmount={form.setDownPaymentAmount}
                 inclusions={form.inclusions}
                 products={products}
                 selectedProductId={form.selectedProductId} setSelectedProductId={form.setSelectedProductId}

@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +25,7 @@ export type PackageItem = {
     discount_type: DiscountType;
     discount_value: number;
     package_price: number;
+    down_payment_amount: number;
     duration: string;
     status: "Active" | "Inactive";
     inclusions: PackageInclusion[];
@@ -88,6 +89,7 @@ export function getSavedPackageAccess(): PackageAccess {
             localStorage.getItem("permissions") ||
             "{}"
         );
+
         const access =
             permissions.package_access ||
             permissions.packages_access ||
@@ -116,7 +118,9 @@ export function Card({
     className?: string;
 }) {
     return (
-        <div className={`rounded-[12px] border border-[#EBE4F0] bg-white p-3.5 ${className}`}>
+        <div
+            className={`rounded-[12px] border border-[#EBE4F0] bg-white p-3.5 ${className}`}
+        >
             {children}
         </div>
     );
@@ -134,6 +138,7 @@ export function CardHeader({
             <h2 className="whitespace-nowrap text-[14px] font-medium leading-none text-[#1A1220]">
                 {title}
             </h2>
+
             {action && (
                 <span className="shrink-0 whitespace-nowrap text-[10px] font-semibold leading-none text-[#2D1B4E]">
                     {action}
@@ -172,7 +177,13 @@ export function SummaryBox({
     return (
         <div>
             <p className="text-[9.5px] text-[#7A6E88]">{label}</p>
-            <p className={`mt-0.5 text-[13px] ${strong ? "font-semibold text-[#2D1B4E]" : "font-semibold text-[#1A1220]"}`}>
+            <p
+                className={`mt-0.5 text-[13px] ${
+                    strong
+                        ? "font-semibold text-[#2D1B4E]"
+                        : "font-semibold text-[#1A1220]"
+                }`}
+            >
                 {value}
             </p>
         </div>
@@ -189,8 +200,12 @@ export function EmptyState({
     return (
         <div className="flex min-h-[300px] items-center justify-center rounded-[10px] border border-dashed border-[#EBE4F0] bg-[#FDFAF4] px-4 text-center">
             <div>
-                <p className="text-[12px] font-semibold text-[#1A1220]">{title}</p>
-                <p className="mt-1 text-[10px] leading-4 text-[#7A6E88]">{detail}</p>
+                <p className="text-[12px] font-semibold text-[#1A1220]">
+                    {title}
+                </p>
+                <p className="mt-1 text-[10px] leading-4 text-[#7A6E88]">
+                    {detail}
+                </p>
             </div>
         </div>
     );
@@ -223,18 +238,27 @@ export function PageHeader({
     return (
         <div className="flex h-[54px] items-center justify-between border-b border-[#EBE4F0] bg-white px-5">
             <div className="flex items-center gap-3">
-                <h1 className="text-[18px] font-medium text-[#1A1220]">{title}</h1>
+                <h1 className="text-[18px] font-medium text-[#1A1220]">
+                    {title}
+                </h1>
+
                 <span className="rounded-[6px] bg-[#FFFBF0] px-3 py-1 text-[11px] font-medium text-[#633806]">
                     {badge}
                 </span>
             </div>
+
             <div className="flex items-center gap-2">
                 <span className="rounded-[7px] border border-[#EBE4F0] bg-white px-4 py-1.5 text-[11px] text-[#7A6E88]">
-                    {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                    {new Date().toLocaleDateString("en-US", {
+                        month: "long",
+                        year: "numeric",
+                    })}
                 </span>
+
                 <button className="flex h-[32px] w-[32px] items-center justify-center rounded-[7px] border border-[#EBE4F0] bg-white text-[12px] text-[#C9951A]">
                     ●
                 </button>
+
                 <div className="flex h-[36px] w-[36px] items-center justify-center rounded-full bg-[#C9951A] text-[12px] font-medium text-white">
                     YS
                 </div>
@@ -261,12 +285,26 @@ export function PackageCard({
 
     return (
         <div className="overflow-hidden rounded-[10px] border border-[#EBE4F0] bg-white">
-            <div className={`px-3 py-2.5 ${featured ? "bg-[#C9951A] text-white" : "bg-[#2D1B4E] text-white"}`}>
+            <div
+                className={`px-3 py-2.5 ${
+                    featured ? "bg-[#C9951A] text-white" : "bg-[#2D1B4E] text-white"
+                }`}
+            >
                 <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                        <p className="truncate text-[11.5px] font-semibold leading-4">{pkg.name}</p>
-                        <p className="mt-1 text-[15px] font-medium leading-none">{peso(pkg.package_price)}</p>
+                        <p className="truncate text-[11.5px] font-semibold leading-4">
+                            {pkg.name}
+                        </p>
+
+                        <p className="mt-1 text-[15px] font-medium leading-none">
+                            {peso(pkg.package_price)}
+                        </p>
+
+                        <p className="mt-1 text-[9px] leading-none text-white/80">
+                            DP: {peso(pkg.down_payment_amount || 0)}
+                        </p>
                     </div>
+
                     <StatusBadge status={pkg.status} />
                 </div>
             </div>
@@ -278,32 +316,52 @@ export function PackageCard({
 
                 <div className="mt-2 space-y-0.5">
                     {shownInclusions.length === 0 ? (
-                        <p className="text-[9.5px] text-[#7A6E88]">No inclusions listed.</p>
+                        <p className="text-[9.5px] text-[#7A6E88]">
+                            No inclusions listed.
+                        </p>
                     ) : (
                         shownInclusions.map((item) => (
-                            <p key={item.productId} className="truncate text-[9.5px] leading-[14px] text-[#7A6E88]">
+                            <p
+                                key={item.productId}
+                                className="truncate text-[9.5px] leading-[14px] text-[#7A6E88]"
+                            >
                                 {item.productName} × {item.quantity}
                             </p>
                         ))
                     )}
+
                     {moreCount > 0 && (
-                        <p className="text-[9.5px] font-semibold text-[#2D1B4E]">+{moreCount} more</p>
+                        <p className="text-[9.5px] font-semibold text-[#2D1B4E]">
+                            +{moreCount} more
+                        </p>
                     )}
                 </div>
 
                 <div className="mt-2.5 flex items-center justify-between border-t border-[#F5EEF6] pt-2">
-                    <p className="text-[9px] text-[#7A6E88]">{pkg.duration || "N/A"}</p>
+                    <p className="text-[9px] text-[#7A6E88]">
+                        {pkg.duration || "N/A"}
+                    </p>
+
                     {canManage ? (
                         <div className="flex gap-2">
-                            <button onClick={onEdit} className="text-[9.5px] font-semibold text-[#2D1B4E] hover:underline">
+                            <button
+                                onClick={onEdit}
+                                className="text-[9.5px] font-semibold text-[#2D1B4E] hover:underline"
+                            >
                                 Edit
                             </button>
-                            <button onClick={onDelete} className="text-[9.5px] font-semibold text-[#9B1C1C] hover:underline">
+
+                            <button
+                                onClick={onDelete}
+                                className="text-[9.5px] font-semibold text-[#9B1C1C] hover:underline"
+                            >
                                 Delete
                             </button>
                         </div>
                     ) : (
-                        <p className="text-[9.5px] font-semibold text-[#2D1B4E]">View only</p>
+                        <p className="text-[9.5px] font-semibold text-[#2D1B4E]">
+                            View only
+                        </p>
                     )}
                 </div>
             </div>
@@ -311,23 +369,33 @@ export function PackageCard({
     );
 }
 
-// ─── Package Form Modal (shared between Manager + Staff full access) ───────────
+// ─── Package Form Modal ───────────────────────────────────────────────────────
 
 export function PackageFormModal({
                                      show,
                                      editingId,
                                      error,
                                      submitting,
-                                     name, setName,
-                                     description, setDescription,
-                                     duration, setDuration,
-                                     status, setStatus,
-                                     discountType, setDiscountType,
-                                     discountValue, setDiscountValue,
+                                     name,
+                                     setName,
+                                     description,
+                                     setDescription,
+                                     duration,
+                                     setDuration,
+                                     status,
+                                     setStatus,
+                                     discountType,
+                                     setDiscountType,
+                                     discountValue,
+                                     setDiscountValue,
+                                     downPaymentAmount,
+                                     setDownPaymentAmount,
                                      inclusions,
                                      products,
-                                     selectedProductId, setSelectedProductId,
-                                     inclusionQty, setInclusionQty,
+                                     selectedProductId,
+                                     setSelectedProductId,
+                                     inclusionQty,
+                                     setInclusionQty,
                                      originalValue,
                                      packagePrice,
                                      onAddInclusion,
@@ -339,16 +407,26 @@ export function PackageFormModal({
     editingId: number | null;
     error: string;
     submitting: boolean;
-    name: string; setName: (v: string) => void;
-    description: string; setDescription: (v: string) => void;
-    duration: string; setDuration: (v: string) => void;
-    status: "Active" | "Inactive"; setStatus: (v: "Active" | "Inactive") => void;
-    discountType: DiscountType; setDiscountType: (v: DiscountType) => void;
-    discountValue: string; setDiscountValue: (v: string) => void;
+    name: string;
+    setName: (v: string) => void;
+    description: string;
+    setDescription: (v: string) => void;
+    duration: string;
+    setDuration: (v: string) => void;
+    status: "Active" | "Inactive";
+    setStatus: (v: "Active" | "Inactive") => void;
+    discountType: DiscountType;
+    setDiscountType: (v: DiscountType) => void;
+    discountValue: string;
+    setDiscountValue: (v: string) => void;
+    downPaymentAmount: string;
+    setDownPaymentAmount: (v: string) => void;
     inclusions: PackageInclusion[];
     products: Product[];
-    selectedProductId: string; setSelectedProductId: (v: string) => void;
-    inclusionQty: string; setInclusionQty: (v: string) => void;
+    selectedProductId: string;
+    setSelectedProductId: (v: string) => void;
+    inclusionQty: string;
+    setInclusionQty: (v: string) => void;
     originalValue: number;
     packagePrice: number;
     onAddInclusion: () => void;
@@ -359,6 +437,7 @@ export function PackageFormModal({
     if (!show) return null;
 
     const discountNumber = Number(discountValue || 0);
+    const downPaymentNumber = Number(downPaymentAmount || 0);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
@@ -368,10 +447,13 @@ export function PackageFormModal({
                         <h2 className="text-[18px] font-medium text-[#1A1220]">
                             {editingId ? "Edit package" : "Add package"}
                         </h2>
+
                         <p className="mt-1 text-[10.5px] leading-4 text-[#7A6E88]">
-                            Build a branch package using inventory products, duration, and discount rules.
+                            Build a branch package using inventory products,
+                            duration, discount rules, and required down payment.
                         </p>
                     </div>
+
                     <button
                         type="button"
                         onClick={onClose}
@@ -390,10 +472,21 @@ export function PackageFormModal({
 
                     <div className="grid grid-cols-2 gap-3">
                         <Field label="Package Name">
-                            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Birthday Basic Package" className={fieldClass} />
+                            <input
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder="e.g. Birthday Basic Package"
+                                className={fieldClass}
+                            />
                         </Field>
+
                         <Field label="Duration">
-                            <input value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="e.g. 3 hours" className={fieldClass} />
+                            <input
+                                value={duration}
+                                onChange={(e) => setDuration(e.target.value)}
+                                placeholder="e.g. 3 hours"
+                                className={fieldClass}
+                            />
                         </Field>
                     </div>
 
@@ -408,15 +501,22 @@ export function PackageFormModal({
 
                     <Card className="bg-[#FDFAF4]">
                         <CardHeader title="Package Inclusions" />
+
                         <div className="grid grid-cols-[1.7fr_0.65fr_0.55fr] gap-2">
-                            <select value={selectedProductId} onChange={(e) => setSelectedProductId(e.target.value)} className={fieldClass}>
+                            <select
+                                value={selectedProductId}
+                                onChange={(e) => setSelectedProductId(e.target.value)}
+                                className={fieldClass}
+                            >
                                 <option value="">Select product</option>
                                 {products.map((p) => (
                                     <option key={p.id} value={p.id}>
-                                        {p.name} — {peso(p.salesPrice)} — Stock: {p.stock}
+                                        {p.name} — {peso(p.salesPrice)} — Stock:{" "}
+                                        {p.stock}
                                     </option>
                                 ))}
                             </select>
+
                             <input
                                 type="number"
                                 min="1"
@@ -425,7 +525,12 @@ export function PackageFormModal({
                                 placeholder="Qty"
                                 className={fieldClass}
                             />
-                            <button type="button" onClick={onAddInclusion} className="rounded-[8px] bg-[#2D1B4E] px-3 py-2 text-[11px] font-semibold text-white hover:bg-[#3D2560]">
+
+                            <button
+                                type="button"
+                                onClick={onAddInclusion}
+                                className="rounded-[8px] bg-[#2D1B4E] px-3 py-2 text-[11px] font-semibold text-white hover:bg-[#3D2560]"
+                            >
                                 Add
                             </button>
                         </div>
@@ -437,16 +542,28 @@ export function PackageFormModal({
                                 </p>
                             ) : (
                                 inclusions.map((item) => (
-                                    <div key={item.productId} className="flex items-center justify-between rounded-[9px] border border-[#F5EEF6] bg-white px-3 py-2">
+                                    <div
+                                        key={item.productId}
+                                        className="flex items-center justify-between rounded-[9px] border border-[#F5EEF6] bg-white px-3 py-2"
+                                    >
                                         <div>
                                             <p className="text-[11px] font-semibold text-[#1A1220]">
                                                 {item.productName} × {item.quantity}
                                             </p>
+
                                             <p className="mt-0.5 text-[9.5px] text-[#7A6E88]">
-                                                {peso(item.unitSalesPrice)} each · {peso(item.lineValue)} total
+                                                {peso(item.unitSalesPrice)} each ·{" "}
+                                                {peso(item.lineValue)} total
                                             </p>
                                         </div>
-                                        <button type="button" onClick={() => onRemoveInclusion(item.productId)} className="text-[10px] font-semibold text-[#9B1C1C] hover:underline">
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                onRemoveInclusion(item.productId)
+                                            }
+                                            className="text-[10px] font-semibold text-[#9B1C1C] hover:underline"
+                                        >
                                             Remove
                                         </button>
                                     </div>
@@ -455,39 +572,96 @@ export function PackageFormModal({
                         </div>
                     </Card>
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-4 gap-3">
                         <Field label="Discount Type">
-                            <select value={discountType} onChange={(e) => { setDiscountType(e.target.value as DiscountType); setDiscountValue(""); }} className={fieldClass}>
+                            <select
+                                value={discountType}
+                                onChange={(e) => {
+                                    setDiscountType(e.target.value as DiscountType);
+                                    setDiscountValue("");
+                                }}
+                                className={fieldClass}
+                            >
                                 <option value="amount">Amount</option>
                                 <option value="percentage">Percentage</option>
                             </select>
                         </Field>
-                        <Field label={discountType === "percentage" ? "Discount (%)" : "Discount (₱)"}>
+
+                        <Field
+                            label={
+                                discountType === "percentage"
+                                    ? "Discount (%)"
+                                    : "Discount (₱)"
+                            }
+                        >
                             <input
                                 type="number"
                                 min="0"
-                                max={discountType === "percentage" ? 100 : originalValue}
+                                max={
+                                    discountType === "percentage"
+                                        ? 100
+                                        : originalValue
+                                }
                                 value={discountValue}
                                 onChange={(e) => setDiscountValue(e.target.value)}
-                                placeholder={discountType === "percentage" ? "e.g. 10" : "e.g. 500"}
+                                placeholder={
+                                    discountType === "percentage"
+                                        ? "e.g. 10"
+                                        : "e.g. 500"
+                                }
                                 className={fieldClass}
                             />
                         </Field>
+
+                        <Field label="Down Payment">
+                            <input
+                                type="number"
+                                min="0"
+                                max={packagePrice}
+                                value={downPaymentAmount}
+                                onChange={(e) => setDownPaymentAmount(e.target.value)}
+                                placeholder="e.g. 1000"
+                                className={fieldClass}
+                            />
+                        </Field>
+
                         <Field label="Status">
-                            <select value={status} onChange={(e) => setStatus(e.target.value as "Active" | "Inactive")} className={fieldClass}>
+                            <select
+                                value={status}
+                                onChange={(e) =>
+                                    setStatus(e.target.value as "Active" | "Inactive")
+                                }
+                                className={fieldClass}
+                            >
                                 <option value="Active">Active</option>
                                 <option value="Inactive">Inactive</option>
                             </select>
                         </Field>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3 rounded-[12px] border border-[#EBE4F0] bg-[#FDFAF4] p-3 text-center">
+                    <div className="grid grid-cols-4 gap-3 rounded-[12px] border border-[#EBE4F0] bg-[#FDFAF4] p-3 text-center">
                         <SummaryBox label="Original Value" value={peso(originalValue)} />
+
                         <SummaryBox
                             label="Discount"
-                            value={discountType === "percentage" ? `${discountNumber || 0}%` : peso(discountNumber)}
+                            value={
+                                discountType === "percentage"
+                                    ? `${discountNumber || 0}%`
+                                    : peso(discountNumber)
+                            }
                         />
-                        <SummaryBox label="Final Price" value={peso(packagePrice)} strong />
+
+                        <SummaryBox
+                            label="Final Price"
+                            value={peso(packagePrice)}
+                            strong
+                        />
+
+                        <SummaryBox
+                            label="Down Payment"
+                            value={peso(downPaymentNumber)}
+                            strong
+                        />
                     </div>
 
                     <button
@@ -495,7 +669,11 @@ export function PackageFormModal({
                         disabled={submitting}
                         className="w-full rounded-[10px] bg-[#2D1B4E] py-2.5 text-[12px] font-semibold text-white transition hover:bg-[#3D2560] disabled:opacity-60"
                     >
-                        {submitting ? "Saving..." : editingId ? "Update package" : "Save package"}
+                        {submitting
+                            ? "Saving..."
+                            : editingId
+                                ? "Update package"
+                                : "Save package"}
                     </button>
                 </form>
             </div>
@@ -521,29 +699,46 @@ export function usePackageForm(
     const [status, setStatus] = useState<"Active" | "Inactive">("Active");
     const [discountType, setDiscountType] = useState<DiscountType>("amount");
     const [discountValue, setDiscountValue] = useState("");
+    const [downPaymentAmount, setDownPaymentAmount] = useState("");
     const [inclusions, setInclusions] = useState<PackageInclusion[]>([]);
     const [selectedProductId, setSelectedProductId] = useState("");
     const [inclusionQty, setInclusionQty] = useState("");
 
-    const { useState: _u } = { useState };
+    const originalValue = inclusions.reduce(
+        (sum, item) => sum + item.lineValue,
+        0
+    );
 
-    const originalValue = inclusions.reduce((sum, item) => sum + item.lineValue, 0);
     const discountNumber = Number(discountValue || 0);
+
     const computedDiscount =
         discountType === "percentage"
             ? originalValue * (discountNumber / 100)
             : discountNumber;
+
     const discountAmount = Math.min(computedDiscount, originalValue);
     const packagePrice = Math.max(originalValue - discountAmount, 0);
+    const downPaymentNumber = Number(downPaymentAmount || 0);
 
     function reset() {
-        setName(""); setDescription(""); setDuration("");
-        setStatus("Active"); setDiscountType("amount"); setDiscountValue("");
-        setEditingId(null); setInclusions([]);
-        setSelectedProductId(""); setInclusionQty(""); setError("");
+        setName("");
+        setDescription("");
+        setDuration("");
+        setStatus("Active");
+        setDiscountType("amount");
+        setDiscountValue("");
+        setDownPaymentAmount("");
+        setEditingId(null);
+        setInclusions([]);
+        setSelectedProductId("");
+        setInclusionQty("");
+        setError("");
     }
 
-    function openAdd() { reset(); setShowForm(true); }
+    function openAdd() {
+        reset();
+        setShowForm(true);
+    }
 
     function openEdit(pkg: PackageItem) {
         setEditingId(pkg.id);
@@ -553,6 +748,7 @@ export function usePackageForm(
         setStatus(pkg.status);
         setDiscountType(pkg.discount_type || "amount");
         setDiscountValue(String(pkg.discount_value || 0));
+        setDownPaymentAmount(String(pkg.down_payment_amount || 0));
         setInclusions(pkg.inclusions || []);
         setError("");
         setShowForm(true);
@@ -561,7 +757,11 @@ export function usePackageForm(
     function addInclusion(products: Product[]) {
         const product = products.find((p) => p.id === Number(selectedProductId));
         const qty = Number(inclusionQty);
-        if (!product || qty <= 0) { setError("Please select a product and enter a valid quantity."); return; }
+
+        if (!product || qty <= 0) {
+            setError("Please select a product and enter a valid quantity.");
+            return;
+        }
 
         const existing = inclusions.find((item) => item.productId === product.id);
         const totalQty = (existing?.quantity ?? 0) + qty;
@@ -569,46 +769,127 @@ export function usePackageForm(
         const lineValue = unitSalesPrice * totalQty;
 
         if (existing) {
-            setInclusions((prev) => prev.map((item) => item.productId === product.id ? { ...item, quantity: totalQty, unitSalesPrice, lineValue } : item));
+            setInclusions((prev) =>
+                prev.map((item) =>
+                    item.productId === product.id
+                        ? {
+                            ...item,
+                            quantity: totalQty,
+                            unitSalesPrice,
+                            lineValue,
+                        }
+                        : item
+                )
+            );
         } else {
-            setInclusions((prev) => [...prev, { productId: product.id, productName: product.name, quantity: qty, unitSalesPrice, lineValue: unitSalesPrice * qty }]);
+            setInclusions((prev) => [
+                ...prev,
+                {
+                    productId: product.id,
+                    productName: product.name,
+                    quantity: qty,
+                    unitSalesPrice,
+                    lineValue: unitSalesPrice * qty,
+                },
+            ]);
         }
-        setSelectedProductId(""); setInclusionQty(""); setError("");
+
+        setSelectedProductId("");
+        setInclusionQty("");
+        setError("");
     }
 
     function removeInclusion(productId: number) {
-        setInclusions((prev) => prev.filter((item) => item.productId !== productId));
+        setInclusions((prev) =>
+            prev.filter((item) => item.productId !== productId)
+        );
     }
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
-        if (!storeId) { setError("Missing store_id."); return; }
-        if (!branchId) { setError("Missing branch_id."); return; }
-        if (!name.trim()) { setError("Please enter package name."); return; }
-        if (inclusions.length === 0) { setError("Please add at least one product inclusion."); return; }
-        if (discountNumber < 0) { setError("Discount cannot be negative."); return; }
-        if (discountType === "percentage" && discountNumber > 100) { setError("Percentage discount cannot exceed 100%."); return; }
-        if (discountType === "amount" && discountNumber > originalValue) { setError("Discount cannot exceed original value."); return; }
+
+        if (!storeId) {
+            setError("Missing store_id.");
+            return;
+        }
+
+        if (!branchId) {
+            setError("Missing branch_id.");
+            return;
+        }
+
+        if (!name.trim()) {
+            setError("Please enter package name.");
+            return;
+        }
+
+        if (inclusions.length === 0) {
+            setError("Please add at least one product inclusion.");
+            return;
+        }
+
+        if (discountNumber < 0) {
+            setError("Discount cannot be negative.");
+            return;
+        }
+
+        if (discountType === "percentage" && discountNumber > 100) {
+            setError("Percentage discount cannot exceed 100%.");
+            return;
+        }
+
+        if (discountType === "amount" && discountNumber > originalValue) {
+            setError("Discount cannot exceed original value.");
+            return;
+        }
+
+        if (downPaymentNumber < 0) {
+            setError("Down payment cannot be negative.");
+            return;
+        }
+
+        if (downPaymentNumber > packagePrice) {
+            setError("Down payment cannot exceed final package price.");
+            return;
+        }
 
         setSubmitting(true);
+
         try {
             const res = await fetch("/api/packages", {
                 method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${getToken()}`,
+                },
                 body: JSON.stringify({
                     action: editingId ? "update_package" : "create_package",
                     ...(editingId && { id: editingId }),
-                    store_id: storeId, branch_id: branchId,
-                    name: name.trim(), description: description.trim(),
-                    original_value: originalValue, discount_type: discountType,
-                    discount_value: discountNumber, package_price: packagePrice,
-                    duration: duration.trim() || "N/A", status, inclusions,
+                    store_id: storeId,
+                    branch_id: branchId,
+                    name: name.trim(),
+                    description: description.trim(),
+                    original_value: originalValue,
+                    discount_type: discountType,
+                    discount_value: discountNumber,
+                    package_price: packagePrice,
+                    down_payment_amount: downPaymentNumber,
+                    duration: duration.trim() || "N/A",
+                    status,
+                    inclusions,
                 }),
             });
+
             const data = await res.json();
-            if (!res.ok) { setError(data.error || "Failed to save package."); return; }
+
+            if (!res.ok) {
+                setError(data.error || "Failed to save package.");
+                return;
+            }
+
             await onSuccess();
-            reset(); setShowForm(false);
+            reset();
+            setShowForm(false);
         } catch {
             setError("Failed to save package. Please try again.");
         } finally {
@@ -618,14 +899,31 @@ export function usePackageForm(
 
     async function handleDelete(id: number) {
         if (!confirm("Delete this package? This action cannot be undone.")) return;
-        if (!branchId) { alert("Missing branch_id."); return; }
+
+        if (!branchId) {
+            alert("Missing branch_id.");
+            return;
+        }
+
         try {
             const res = await fetch("/api/packages", {
                 method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
-                body: JSON.stringify({ action: "delete_package", id, branch_id: branchId }),
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${getToken()}`,
+                },
+                body: JSON.stringify({
+                    action: "delete_package",
+                    id,
+                    branch_id: branchId,
+                }),
             });
-            if (!res.ok) { alert("Failed to delete package."); return; }
+
+            if (!res.ok) {
+                alert("Failed to delete package.");
+                return;
+            }
+
             return id;
         } catch {
             alert("Failed to delete package.");
@@ -633,27 +931,42 @@ export function usePackageForm(
     }
 
     return {
-        // form visibility
-        showForm, setShowForm,
+        showForm,
+        setShowForm,
         editingId,
         submitting,
-        error, setError,
-        // fields
-        name, setName,
-        description, setDescription,
-        duration, setDuration,
-        status, setStatus,
-        discountType, setDiscountType,
-        discountValue, setDiscountValue,
+        error,
+        setError,
+
+        name,
+        setName,
+        description,
+        setDescription,
+        duration,
+        setDuration,
+        status,
+        setStatus,
+        discountType,
+        setDiscountType,
+        discountValue,
+        setDiscountValue,
+        downPaymentAmount,
+        setDownPaymentAmount,
         inclusions,
-        selectedProductId, setSelectedProductId,
-        inclusionQty, setInclusionQty,
-        // computed
-        originalValue, packagePrice,
-        // actions
-        openAdd, openEdit, addInclusion, removeInclusion, handleSubmit, handleDelete, reset,
+        selectedProductId,
+        setSelectedProductId,
+        inclusionQty,
+        setInclusionQty,
+
+        originalValue,
+        packagePrice,
+
+        openAdd,
+        openEdit,
+        addInclusion,
+        removeInclusion,
+        handleSubmit,
+        handleDelete,
+        reset,
     };
 }
-
-// Need to import useState for the hook above
-import { useState } from "react";

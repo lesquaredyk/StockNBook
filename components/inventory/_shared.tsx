@@ -39,6 +39,8 @@ export type Product = {
     storeId?: number | null;
     branchId?: number | null;
     branchName?: string | null;
+    packageId?: number | null;
+    packageName?: string | null;
     name: string;
     category: string;
     stock: number;
@@ -54,6 +56,8 @@ export type ProductSaveData = {
     storeId?: number | null;
     branchId?: number | null;
     branchName?: string | null;
+    packageId?: number | null;
+    packageName?: string | null;
     name: string;
     category: string;
     stock: number;
@@ -201,6 +205,8 @@ export function normalizeProduct(raw: any): Product {
         storeId: raw.storeId ?? raw.store_id ?? null,
         branchId: raw.branchId ?? raw.branch_id ?? null,
         branchName: raw.branchName ?? raw.branch_name ?? null,
+        packageId: raw.packageId ?? raw.package_id ?? null,
+        packageName: raw.packageName ?? raw.package_name ?? null,
         name: raw.name || "",
         category: raw.category || "",
         stock: Number(raw.stock ?? 0),
@@ -2408,7 +2414,9 @@ function VariantEditor({ inv }: { inv: VariantEditorController }) {
     const hasAddedInitialRow = React.useRef(false);
     const lastEditorKey = React.useRef<string | null>(null);
 
-    const variants = Array.isArray(inv.variants) ? inv.variants : [];
+    const variants = React.useMemo<ProductVariantSave[]>(() => {
+        return Array.isArray(inv.variants) ? inv.variants : [];
+    }, [inv.variants]);
 
     const getColumnsFromVariants = React.useCallback(
         (rows: ProductVariantSave[]) => {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-    getToken, peso, formatText, getSavedPackageAccess,
+    getToken, formatText, getSavedPackageAccess,  // peso removed
     Card, CardHeader, PageHeader, PackageCard, EmptyState,
     PackageFormModal, usePackageForm,
     type PackageItem, type Product, type PackageAccess,
@@ -26,40 +26,7 @@ export default function StaffPackages() {
         if (branchId) await fetchPackages(branchId);
     });
 
-    useEffect(() => {
-        const savedBranchName =
-            sessionStorage.getItem("branch_name") ||
-            sessionStorage.getItem("store_name") ||
-            "Branch";
-        const savedStoreId = sessionStorage.getItem("store_id");
-        const savedBranchId =
-            sessionStorage.getItem("branch_id") ||
-            sessionStorage.getItem("staff_branch_id") ||
-            sessionStorage.getItem("manager_branch_id");
-        const savedAccess = getSavedPackageAccess();
-
-        setBranchName(savedBranchName);
-        setPackageAccess(savedAccess);
-
-        if (savedStoreId) {
-            const store = Number(savedStoreId);
-            setStoreId(store);
-            if (savedAccess === "full") fetchProducts(store);
-        }
-
-        if (savedBranchId) {
-            const branch = Number(savedBranchId);
-            setBranchId(branch);
-            if (savedAccess === "view" || savedAccess === "full") {
-                fetchPackages(branch);
-            } else {
-                setLoading(false);
-            }
-        } else {
-            setLoading(false);
-            setError("Missing branch_id. Please refresh or log in again.");
-        }
-    }, []);
+    // ── Shared fetchers ──────────────────────────────────────────────────────
 
     async function fetchPackages(branch_id: number) {
         try {
@@ -95,6 +62,45 @@ export default function StaffPackages() {
         }
     }
 
+    // ── Init ─────────────────────────────────────────────────────────────────
+
+    useEffect(() => {
+        const savedBranchName =
+            sessionStorage.getItem("branch_name") ||
+            sessionStorage.getItem("store_name") ||
+            "Branch";
+        const savedStoreId = sessionStorage.getItem("store_id");
+        const savedBranchId =
+            sessionStorage.getItem("branch_id") ||
+            sessionStorage.getItem("staff_branch_id") ||
+            sessionStorage.getItem("manager_branch_id");
+        const savedAccess = getSavedPackageAccess();
+
+        setBranchName(savedBranchName);
+        setPackageAccess(savedAccess);
+
+        if (savedStoreId) {
+            const store = Number(savedStoreId);
+            setStoreId(store);
+            if (savedAccess === "full") void fetchProducts(store);  // voided
+        }
+
+        if (savedBranchId) {
+            const branch = Number(savedBranchId);
+            setBranchId(branch);
+            if (savedAccess === "view" || savedAccess === "full") {
+                void fetchPackages(branch);  // voided
+            } else {
+                setLoading(false);
+            }
+        } else {
+            setLoading(false);
+            setError("Missing branch_id. Please refresh or log in again.");
+        }
+    }, []);
+
+    // ── Handlers ─────────────────────────────────────────────────────────────
+
     async function handleDelete(id: number) {
         if (!canManage) return;
         const deletedId = await form.handleDelete(id);
@@ -111,6 +117,8 @@ export default function StaffPackages() {
                 pkg.status.toLowerCase().includes(q)
         );
     }, [packages, search]);
+
+    // ── Render ───────────────────────────────────────────────────────────────
 
     return (
         <>
@@ -134,7 +142,7 @@ export default function StaffPackages() {
                             </button>
                         ) : (
                             <button
-                                onClick={() => branchId && fetchPackages(branchId)}
+                                onClick={() => { if (branchId) void fetchPackages(branchId); }}
                                 className="h-[42px] rounded-[10px] border border-[#EBE4F0] bg-white px-4 text-[12px] font-semibold text-[#2D1B4E] transition hover:bg-[#EEE8F8]"
                             >
                                 Refresh
@@ -199,6 +207,8 @@ export default function StaffPackages() {
                     status={form.status} setStatus={form.setStatus}
                     discountType={form.discountType} setDiscountType={form.setDiscountType}
                     discountValue={form.discountValue} setDiscountValue={form.setDiscountValue}
+                    downPaymentAmount={form.downPaymentAmount}
+                    setDownPaymentAmount={form.setDownPaymentAmount}
                     inclusions={form.inclusions}
                     products={products}
                     selectedProductId={form.selectedProductId} setSelectedProductId={form.setSelectedProductId}

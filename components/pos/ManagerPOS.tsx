@@ -150,7 +150,7 @@ function POSProductTable({ pos }: { pos: UsePOSReturn }) {
     };
 
     const productGridClass =
-        "grid grid-cols-[minmax(260px,1.45fr)_minmax(130px,0.9fr)_minmax(90px,0.65fr)_minmax(110px,0.7fr)_minmax(170px,0.9fr)]";
+        "grid grid-cols-[minmax(0,1.45fr)_minmax(0,0.9fr)_minmax(70px,0.55fr)_minmax(90px,0.65fr)_minmax(145px,0.9fr)]";
 
     if (pos.displayProducts.length === 0) {
         return (
@@ -162,11 +162,10 @@ function POSProductTable({ pos }: { pos: UsePOSReturn }) {
 
     return (
         <div className="overflow-hidden rounded-xl border border-[#E6DDF0] bg-white">
-            <div className="overflow-x-auto">
-                <div className="min-w-[760px]">
-                    <div
-                        className={`${productGridClass} border-b border-[#E6DDF0] bg-[#FFFCF7] px-5 py-3 text-[11px] font-semibold tracking-[0.08em] text-[#3D2B76]`}
-                    >
+            <div className="w-full min-w-0">
+                <div
+                    className={`${productGridClass} border-b border-[#E6DDF0] bg-[#FFFCF7] px-5 py-3 text-[11px] font-semibold tracking-[0.08em] text-[#3D2B76]`}
+                >
                         <div className="text-left">Product</div>
                         <div className="text-center">Category</div>
                         <div className="text-center">Stock</div>
@@ -362,7 +361,6 @@ function POSProductTable({ pos }: { pos: UsePOSReturn }) {
                     </div>
                 </div>
             </div>
-        </div>
     );
 }
 
@@ -387,6 +385,24 @@ function CurrentOrderPanel({ pos }: { pos: UsePOSReturn }) {
     const handlePlaceOrderClick = async () => {
         if (pos.cartItems.length === 0) return;
 
+        const paymentText = String(pos.payment || "").trim();
+        const paidAmount = Number(paymentText.replace(/,/g, ""));
+
+        if (paymentText === "") {
+            alert("Please enter customer payment.");
+            return;
+        }
+
+        if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
+            alert("Please enter a valid customer payment.");
+            return;
+        }
+
+        if (paidAmount < pos.total) {
+            alert("Payment must be equal or greater than the total.");
+            return;
+        }
+
         await Promise.resolve(pos.handlePlaceOrder());
 
         setShowSuccessDialog(true);
@@ -397,7 +413,7 @@ function CurrentOrderPanel({ pos }: { pos: UsePOSReturn }) {
 
         successTimeoutRef.current = window.setTimeout(() => {
             setShowSuccessDialog(false);
-        }, 4000);
+        }, 1000);
     };
 
     return (

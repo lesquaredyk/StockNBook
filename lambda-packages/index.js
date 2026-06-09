@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+
 const mysql = require("mysql2/promise");
 const jwt = require("jsonwebtoken");
 
@@ -42,6 +44,11 @@ function safeParseJSON(value) {
     return value;
 }
 
+function toNumber(value, fallback = 0) {
+    const num = Number(value ?? fallback);
+    return Number.isFinite(num) ? num : fallback;
+}
+
 exports.handler = async (event) => {
     if (event.httpMethod === "OPTIONS") {
         return { statusCode: 200, headers, body: "" };
@@ -55,7 +62,6 @@ exports.handler = async (event) => {
 
         connection = await mysql.createConnection(dbConfig);
 
-        // ─── GET ALL PACKAGES FOR ONE BRANCH ─────────────────────
         // ─── GET ALL PACKAGES FOR ONE BRANCH OR STORE ─────────────────────
         if (action === "get_packages") {
             const branch_id = body.branch_id ? Number(body.branch_id) : null;
@@ -65,7 +71,9 @@ exports.handler = async (event) => {
                 return {
                     statusCode: 400,
                     headers,
-                    body: JSON.stringify({ error: "branch_id or store_id is required" }),
+                    body: JSON.stringify({
+                        error: "branch_id or store_id is required",
+                    }),
                 };
             }
 
@@ -73,29 +81,60 @@ exports.handler = async (event) => {
 
             if (branch_id) {
                 [rows] = await connection.execute(
-                    `SELECT id, store_id, branch_id, name, description, original_value,
-                    discount_type, discount_value, package_price,
-                    duration, status, inclusions, created_at, updated_at
-             FROM packages
-             WHERE branch_id = ?
-             ORDER BY created_at DESC`,
+                    `
+                    SELECT
+                        id,
+                        store_id,
+                        branch_id,
+                        name,
+                        description,
+                        original_value,
+                        discount_type,
+                        discount_value,
+                        package_price,
+                        down_payment_amount,
+                        duration,
+                        status,
+                        inclusions,
+                        created_at,
+                        updated_at
+                    FROM packages
+                    WHERE branch_id = ?
+                    ORDER BY created_at DESC
+                    `,
                     [branch_id]
                 );
             } else {
                 [rows] = await connection.execute(
-                    `SELECT id, store_id, branch_id, name, description, original_value,
-                    discount_type, discount_value, package_price,
-                    duration, status, inclusions, created_at, updated_at
-             FROM packages
-                     WHERE store_id = ?
-                       AND branch_id IS NOT NULL
-             ORDER BY created_at DESC`,
+                    `
+                    SELECT
+                        id,
+                        store_id,
+                        branch_id,
+                        name,
+                        description,
+                        original_value,
+                        discount_type,
+                        discount_value,
+                        package_price,
+                        down_payment_amount,
+                        duration,
+                        status,
+                        inclusions,
+                        created_at,
+                        updated_at
+                    FROM packages
+                    WHERE store_id = ?
+                      AND branch_id IS NOT NULL
+                    ORDER BY created_at DESC
+                    `,
                     [store_id]
                 );
             }
 
             const packages = rows.map((pkg) => ({
                 ...pkg,
+                down_payment_amount: toNumber(pkg.down_payment_amount),
                 inclusions: safeParseJSON(pkg.inclusions),
             }));
 
@@ -123,12 +162,52 @@ exports.handler = async (event) => {
 
             if (branch_id) {
                 [rows] = await connection.execute(
-                    `SELECT * FROM packages WHERE id = ? AND branch_id = ? LIMIT 1`,
+                    `
+                        SELECT
+                            id,
+                            store_id,
+                            branch_id,
+                            name,
+                            description,
+                            original_value,
+                            discount_type,
+                            discount_value,
+                            package_price,
+                            down_payment_amount,
+                            duration,
+                            status,
+                            inclusions,
+                            created_at,
+                            updated_at
+                        FROM packages
+                        WHERE id = ? AND branch_id = ?
+                            LIMIT 1
+                    `,
                     [id, branch_id]
                 );
             } else {
                 [rows] = await connection.execute(
-                    `SELECT * FROM packages WHERE id = ? LIMIT 1`,
+                    `
+                        SELECT
+                            id,
+                            store_id,
+                            branch_id,
+                            name,
+                            description,
+                            original_value,
+                            discount_type,
+                            discount_value,
+                            package_price,
+                            down_payment_amount,
+                            duration,
+                            status,
+                            inclusions,
+                            created_at,
+                            updated_at
+                        FROM packages
+                        WHERE id = ?
+                            LIMIT 1
+                    `,
                     [id]
                 );
             }
@@ -143,6 +222,7 @@ exports.handler = async (event) => {
 
             const pkg = {
                 ...rows[0],
+                down_payment_amount: toNumber(rows[0].down_payment_amount),
                 inclusions: safeParseJSON(rows[0].inclusions),
             };
 
@@ -166,6 +246,7 @@ exports.handler = async (event) => {
                 discount_type,
                 discount_value,
                 package_price,
+                down_payment_amount,
                 duration,
                 status = "Active",
                 inclusions = [],
@@ -174,49 +255,57 @@ exports.handler = async (event) => {
             const targetStoreId = Number(store_id || decoded.store_id);
             const targetBranchId = Number(branch_id || decoded.branch_id);
 
-            if (!targetStoreId) {
-                return {
-                    statusCode: 400,
-                    headers,
-                    body: JSON.stringify({ error: "store_id is required" }),
-                };
-            }
+            const packagePrice = toNumber(package_price);
+            const downPaymentAmount = toNumber(down_payment_amount);
 
-            if (!targetBranchId) {
-                return {
-                    statusCode: 400,
-                    headers,
-                    body: JSON.stringify({ error: "branch_id is required" }),
-                };
-            }
+            if (!targetStoreId) throw new Error("store_id is required");
+            if (!targetBranchId) throw new Error("branch_id is required");
+            if (!name || packagePrice === undefined || packagePrice === null)
+                throw new Error("name and package_price are required");
+            if (downPaymentAmount < 0)
+                throw new Error("down_payment_amount cannot be negative");
+            if (downPaymentAmount > packagePrice)
+                throw new Error("down_payment_amount cannot exceed package_price");
 
-            if (!name || package_price === undefined || package_price === null) {
-                return {
-                    statusCode: 400,
-                    headers,
-                    body: JSON.stringify({
-                        error: "name and package_price are required",
-                    }),
-                };
-            }
+            // Map inclusions to ensure each has productId, item name, and quantity
+            const mappedInclusions = (inclusions || []).map((i) => ({
+                productId: Number(i.productId),
+                item: i.name || i.item || "",
+                quantity: Number(i.quantity || 1),
+            }));
 
             const [result] = await connection.execute(
-                `INSERT INTO packages
-                    (store_id, branch_id, name, description, original_value, discount_type,
-                     discount_value, package_price, duration, status, inclusions)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                `
+        INSERT INTO packages
+            (
+                store_id,
+                branch_id,
+                name,
+                description,
+                original_value,
+                discount_type,
+                discount_value,
+                package_price,
+                down_payment_amount,
+                duration,
+                status,
+                inclusions
+            )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
                 [
                     targetStoreId,
                     targetBranchId,
                     name,
                     description ?? null,
-                    original_value ?? 0,
+                    toNumber(original_value),
                     discount_type ?? "amount",
-                    discount_value ?? 0,
-                    package_price,
+                    toNumber(discount_value),
+                    packagePrice,
+                    downPaymentAmount,
                     duration ?? null,
                     status,
-                    JSON.stringify(inclusions),
+                    JSON.stringify(mappedInclusions),
                 ]
             );
 
@@ -228,6 +317,7 @@ exports.handler = async (event) => {
                     id: result.insertId,
                     store_id: targetStoreId,
                     branch_id: targetBranchId,
+                    down_payment_amount: downPaymentAmount,
                 }),
             };
         }
@@ -246,62 +336,63 @@ exports.handler = async (event) => {
                 discount_type,
                 discount_value,
                 package_price,
+                down_payment_amount,
                 duration,
                 status,
-                inclusions,
+                inclusions = [],
             } = body;
 
             const packageId = Number(id);
             const targetStoreId = Number(store_id || decoded.store_id);
             const targetBranchId = Number(branch_id || decoded.branch_id);
 
-            if (!packageId) {
-                return {
-                    statusCode: 400,
-                    headers,
-                    body: JSON.stringify({ error: "Package id is required" }),
-                };
-            }
+            const packagePrice = toNumber(package_price);
+            const downPaymentAmount = toNumber(down_payment_amount);
 
-            if (!targetStoreId) {
-                return {
-                    statusCode: 400,
-                    headers,
-                    body: JSON.stringify({ error: "store_id is required" }),
-                };
-            }
+            if (!packageId) throw new Error("Package id is required");
+            if (!targetStoreId) throw new Error("store_id is required");
+            if (!targetBranchId) throw new Error("branch_id is required");
+            if (!name || packagePrice === undefined || packagePrice === null)
+                throw new Error("name and package_price are required");
+            if (downPaymentAmount < 0)
+                throw new Error("down_payment_amount cannot be negative");
+            if (downPaymentAmount > packagePrice)
+                throw new Error("down_payment_amount cannot exceed package_price");
 
-            if (!targetBranchId) {
-                return {
-                    statusCode: 400,
-                    headers,
-                    body: JSON.stringify({ error: "branch_id is required" }),
-                };
-            }
+            // Map inclusions to ensure each has productId, item name, and quantity
+            const mappedInclusions = (inclusions || []).map((i) => ({
+                productId: Number(i.productId),
+                item: i.name || i.item || "",
+                quantity: Number(i.quantity || 1),
+            }));
 
             const [result] = await connection.execute(
-                `UPDATE packages SET
-                    name = ?,
-                    description = ?,
-                    original_value = ?,
-                    discount_type = ?,
-                    discount_value = ?,
-                    package_price = ?,
-                    duration = ?,
-                    status = ?,
-                    inclusions = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                 WHERE id = ? AND branch_id = ?`,
+                `
+        UPDATE packages SET
+            name = ?,
+            description = ?,
+            original_value = ?,
+            discount_type = ?,
+            discount_value = ?,
+            package_price = ?,
+            down_payment_amount = ?,
+            duration = ?,
+            status = ?,
+            inclusions = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND branch_id = ?
+        `,
                 [
                     name,
                     description ?? null,
-                    original_value ?? 0,
+                    toNumber(original_value),
                     discount_type ?? "amount",
-                    discount_value ?? 0,
-                    package_price,
+                    toNumber(discount_value),
+                    packagePrice,
+                    downPaymentAmount,
                     duration ?? null,
                     status,
-                    JSON.stringify(inclusions ?? []),
+                    JSON.stringify(mappedInclusions),
                     packageId,
                     targetBranchId,
                 ]
@@ -320,7 +411,11 @@ exports.handler = async (event) => {
             return {
                 statusCode: 200,
                 headers,
-                body: JSON.stringify({ message: "Package updated" }),
+                body: JSON.stringify({
+                    message: "Package updated",
+                    id: packageId,
+                    down_payment_amount: downPaymentAmount,
+                }),
             };
         }
 
@@ -375,6 +470,8 @@ exports.handler = async (event) => {
             body: JSON.stringify({ error: "Invalid action" }),
         };
     } catch (err) {
+        console.error("PACKAGES LAMBDA ERROR:", err);
+
         return {
             statusCode: 500,
             headers,

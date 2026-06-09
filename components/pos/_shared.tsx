@@ -458,8 +458,8 @@ export function OrdersTable({
                 <p className="text-xs text-[#8A7A91]">{subtitle}</p>
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-sm">
+            <div className="w-full min-w-0 overflow-hidden">
+                <table className="w-full table-fixed text-sm">
                     <thead>
                     <tr className="border-b border-[#E6DDF0]">
                         <th className="px-4 py-3 text-left text-[11px] font-medium tracking-widest text-[#806A8C]">
@@ -496,11 +496,11 @@ export function OrdersTable({
                                 key={o.id}
                                 className="border-b border-[#EFE7F4] last:border-0"
                             >
-                                <td className="px-4 py-3 font-mono text-[11px] font-semibold text-[#5F4E75]">
+                                <td className="truncate px-4 py-3 font-mono text-[11px] font-semibold text-[#5F4E75]">
                                     {o.id}
                                 </td>
 
-                                <td className="px-4 py-3 text-[#1A1220]">
+                                <td className="truncate px-4 py-3 text-[#1A1220]">
                                     {o.customer || "Customer"}
                                 </td>
 
@@ -511,6 +511,7 @@ export function OrdersTable({
                                             {o.items.map((item, idx) => (
                                                 <div
                                                     key={`${item.name}-${idx}`}
+                                                    className="truncate"
                                                 >
                                                     {item.name} x
                                                     {item.quantity}
@@ -522,11 +523,11 @@ export function OrdersTable({
                                     )}
                                 </td>
 
-                                <td className="px-4 py-3 font-semibold text-[#1A1220]">
+                                <td className="truncate px-4 py-3 font-semibold text-[#1A1220]">
                                     {peso(o.total)}
                                 </td>
 
-                                <td className="px-4 py-3 text-[#6A5D6F]">
+                                <td className="truncate px-4 py-3 text-[#6A5D6F]">
                                     {o.date}
                                 </td>
                             </tr>

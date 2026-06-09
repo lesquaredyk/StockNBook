@@ -513,6 +513,7 @@ export function useInventoryController() {
     const [products, setProducts] = useState<Product[]>([]);
     const [manualCategories, setManualCategories] = useState<Category[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
+    const [packages, setPackages] = useState<any[]>([]);
 
     const [storeName] = useState(session.storeName);
     const [storeId] = useState(session.storeId);
@@ -669,9 +670,51 @@ export function useInventoryController() {
         }
     }, []);
 
+    const loadPackages = useCallback(async () => {
+        const token = sessionStorage.getItem("token");
+
+        if (!token) {
+            setPackages([]);
+            return;
+        }
+
+        try {
+            const res = await fetch("/api/packages", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    action: "get_packages",
+                    ...(storeId ? { store_id: Number(storeId) } : {}),
+                    ...(isBranchUser && assignedBranchId
+                        ? { branch_id: Number(assignedBranchId) }
+                        : {}),
+                }),
+            });
+
+            const { data } = await safeParseResponse<any>(res);
+
+            if (!res.ok || !Array.isArray(data.packages)) {
+                setPackages([]);
+                return;
+            }
+
+            setPackages(data.packages);
+        } catch {
+            setPackages([]);
+        }
+    }, [assignedBranchId, isBranchUser, storeId]);
+
     const refreshAll = useCallback(async () => {
-        await Promise.all([loadProducts(), loadCategories(), loadBranches()]);
-    }, [loadBranches, loadCategories, loadProducts]);
+        await Promise.all([
+            loadProducts(),
+            loadCategories(),
+            loadBranches(),
+            loadPackages(),
+        ]);
+    }, [loadBranches, loadCategories, loadProducts, loadPackages]);
 
     useEffect(() => {
         void refreshAll();
@@ -703,10 +746,33 @@ export function useInventoryController() {
         [branches, selectedBranchId]
     );
 
-    const baseProducts = useMemo(
-        () => (isOwner ? branchGroups[selectedBranchId] || [] : products),
-        [branchGroups, isOwner, products, selectedBranchId]
-    );
+    const baseProducts = useMemo(() => {
+        const sourceProducts = isOwner
+            ? branchGroups[selectedBranchId] || []
+            : products;
+
+        return sourceProducts.map((p) => {
+            const productPackageId =
+                (p as any).packageId ?? (p as any).package_id ?? null;
+
+            const matchedPackage = packages.find((pkg) => {
+                const pkgId = pkg.id ?? pkg.package_id ?? pkg.packageId;
+                return Number(pkgId) === Number(productPackageId);
+            });
+
+            return {
+                ...p,
+                packageId: productPackageId,
+                packageName:
+                    matchedPackage?.name ||
+                    matchedPackage?.package_name ||
+                    matchedPackage?.packageName ||
+                    (p as any).packageName ||
+                    (p as any).package_name ||
+                    "",
+            };
+        });
+    }, [branchGroups, isOwner, packages, products, selectedBranchId]);
 
     const filteredProducts = useMemo(() => {
         const q = search.trim().toLowerCase();

@@ -527,6 +527,8 @@ exports.handler = async (event) => {
         if (action === "create_product") {
             const name = toSafeString(body.name, 120);
             const category = toSafeString(body.category, 120);
+            const packageId = toNumber(firstDefined(body.packageId, body.package_id));
+            const packageName = toSafeString(firstDefined(body.packageName, body.package_name), 255);
 
             const incomingVariants = getIncomingVariants(body);
             const hasVariants =
@@ -590,11 +592,13 @@ exports.handler = async (event) => {
 
             const [result] = await connection.execute(
                 `INSERT INTO products
-                 (store_id, branch_id, name, category, stock, alert_level, original_price, sales_price, has_variants)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 (store_id, branch_id, package_id, package_name, name, category, stock, alert_level, original_price, sales_price, has_variants)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     storeId,
                     activeBranchId,
+                    packageId,
+                    packageName || null,
                     name,
                     category,
                     stock,
@@ -646,6 +650,8 @@ exports.handler = async (event) => {
 
             const name = toSafeString(body.name, 120);
             const category = toSafeString(body.category, 120);
+            const packageId = toNumber(firstDefined(body.packageId, body.package_id));
+            const packageName = toSafeString(firstDefined(body.packageName, body.package_name), 255);
 
             const incomingVariants = getIncomingVariants(body);
             const hasVariants =
@@ -707,6 +713,8 @@ exports.handler = async (event) => {
             let query = `
                 UPDATE products
                 SET
+                    package_id = ?,
+                    package_name = ?,
                     name = ?,
                     category = ?,
                     stock = ?,
@@ -719,6 +727,8 @@ exports.handler = async (event) => {
             `;
 
             const params = [
+                packageId,
+                packageName || null,
                 name,
                 category,
                 stock,

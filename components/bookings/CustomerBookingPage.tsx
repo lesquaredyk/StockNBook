@@ -17,6 +17,9 @@ import {
     MapPin,
     Palette,
     RefreshCw,
+    AlertCircle,
+    Trash2,
+    CheckCircle,
 } from "lucide-react";
 
 const STORE_MESSENGER = "your.page.username";
@@ -52,7 +55,6 @@ type Store = {
     store_name: string;
     slug: string;
 };
-
 
 type Booking = {
     bookingReference: string;
@@ -133,6 +135,61 @@ function StatusTimeline({ status }: { status: string }) {
     );
 }
 
+function CancellationConfirmModal({
+                                      isOpen,
+                                      bookingReference,
+                                      onConfirm,
+                                      onCancel,
+                                      isLoading,
+                                  }: {
+    isOpen: boolean;
+    bookingReference: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+    isLoading: boolean;
+}) {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 px-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+                <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+                        <AlertCircle size={20} className="text-red-600" />
+                    </div>
+                    <div className="flex-1">
+                        <h3 className="text-lg font-bold text-[#1f2a44]">
+                            Cancel Booking?
+                        </h3>
+                        <p className="mt-2 text-sm text-gray-600">
+                            Are you sure you want to cancel this booking? This action cannot be undone.
+                        </p>
+                        <p className="mt-3 rounded-lg bg-gray-50 p-2 text-xs font-mono text-gray-700">
+                            Ref: {bookingReference}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="mt-6 flex gap-3">
+                    <button
+                        onClick={onCancel}
+                        disabled={isLoading}
+                        className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                    >
+                        Keep Booking
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        disabled={isLoading}
+                        className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+                    >
+                        {isLoading ? "Cancelling..." : "Cancel Booking"}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 // ─── Inline Status Drawer ─────────────────────────────────────────────────────
 
@@ -157,6 +214,11 @@ function StatusDrawer({ onClose, storeId }: { onClose: () => void; storeId: numb
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const [error, setError] = useState("");
 
+    // Cancellation state
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [cancelLoading, setCancelLoading] = useState(false);
+    const [cancelSuccess, setCancelSuccess] = useState(false);
+
     // Save ref to URL so it survives reload
     function saveRefToUrl(ref: string) {
         const url = new URL(window.location.href);
@@ -178,6 +240,8 @@ function StatusDrawer({ onClose, storeId }: { onClose: () => void; storeId: numb
         setRefInput(""); setPhoneInput(""); setDateInput("");
         setBooking(null); setPhoneBookings([]); setSelectedBooking(null);
         setError(""); setLastUpdated(null);
+        setShowCancelModal(false);
+        setCancelSuccess(false);
         clearUrl();
     }
 
@@ -276,7 +340,60 @@ function StatusDrawer({ onClose, storeId }: { onClose: () => void; storeId: numb
         if (b.bookingReference) saveRefToUrl(b.bookingReference);
     }
 
+    // Handle cancellation
+    async function handleConfirmCancellation() {
+        if (!displayBooking?.bookingReference) return;
+
+        setCancelLoading(true);
+        try {
+            const res = await fetch("/api/bookings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "cancel_booking",
+                    bookingReference: displayBooking.bookingReference,
+                }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                setError(data.error || "Failed to cancel booking.");
+                setShowCancelModal(false);
+                setCancelLoading(false);
+                return;
+            }
+
+            // Success: Update local booking status and show success message
+            setBooking((prev) =>
+                prev
+                    ? { ...prev, status: "Cancelled" }
+                    : null
+            );
+            setSelectedBooking((prev) =>
+                prev
+                    ? { ...prev, status: "Cancelled" }
+                    : null
+            );
+
+            setCancelSuccess(true);
+            setShowCancelModal(false);
+        } catch (err) {
+            setError("Error cancelling booking. Please try again.");
+            setShowCancelModal(false);
+        } finally {
+            setCancelLoading(false);
+        }
+    }
+
     const displayBooking = booking ?? selectedBooking;
+
+    // Check booking status for cancellation eligibility
+    const canCancel = displayBooking?.status === "Pending Review" && !cancelSuccess;
+    const isCompleted = displayBooking?.status === "Completed";
+    const isConfirmedOrPreparing =
+        (displayBooking?.status === "Confirmed" || displayBooking?.status === "Preparing") &&
+        !cancelSuccess;
 
     return (
         <div className="border-b border-purple-100 bg-purple-50/60 px-6 py-5">
@@ -431,10 +548,59 @@ function StatusDrawer({ onClose, storeId }: { onClose: () => void; storeId: numb
                             {displayBooking.bookingType === "custom" && displayBooking.customOrder && <DetailItem label="Custom Request" value={displayBooking.customOrder} />}
                         </div>
 
+                        {/* Status-based Cancel Section */}
+                        {isCompleted ? (
+                            <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                                <p className="font-semibold text-green-700">Booking Completed</p>
+                                <p className="mt-1 text-sm text-green-600">
+                                    Thank you for using our service. This booking has been marked as completed.
+                                </p>
+                            </div>
+                        ) : isConfirmedOrPreparing ? (
+                            <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-4">
+                                <p className="font-semibold text-orange-700">Booking Cannot Be Cancelled</p>
+                                <p className="mt-1 text-sm text-orange-600">
+                                    This booking can no longer be cancelled because it has already been confirmed or is being prepared.
+                                </p>
+                            </div>
+                        ) : canCancel ? (
+                            <div className="mt-4 rounded-xl border border-yellow-200 bg-yellow-50 p-4">
+                                <p className="mb-2 text-sm font-semibold text-yellow-800">
+                                    Want to cancel this booking?
+                                </p>
+                                <p className="mb-3 text-xs text-yellow-700">
+                                    Since your booking is still pending, you can cancel it.
+                                </p>
+                                <button
+                                    onClick={() => setShowCancelModal(true)}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700"
+                                >
+                                    <Trash2 size={14} />
+                                    Cancel Booking
+                                </button>
+                            </div>
+                        ) : displayBooking.status === "Cancelled" ? (
+                            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+                                <p className="text-sm font-semibold text-red-600">✓ Booking Cancelled</p>
+                                <p className="mt-1 text-xs text-red-500">
+                                    Your booking has been cancelled.
+                                </p>
+                            </div>
+                        ) : null}
+
                         <p className="mt-3 text-xs text-gray-400">
                             For follow-ups, contact the store with your booking reference number.
                         </p>
+                        {/* Cancellation Modal */}
+                        <CancellationConfirmModal
+                            isOpen={showCancelModal}
+                            bookingReference={displayBooking?.bookingReference || ""}
+                            onConfirm={handleConfirmCancellation}
+                            onCancel={() => setShowCancelModal(false)}
+                            isLoading={cancelLoading}
+                        />
                     </div>
+
                 )}
             </div>
         </div>
@@ -444,8 +610,12 @@ function StatusDrawer({ onClose, storeId }: { onClose: () => void; storeId: numb
 function DetailItem({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
     return (
         <div className="flex flex-col gap-0.5">
-            <span className="flex items-center gap-1 text-xs text-gray-400">{icon}{label}</span>
-            <span className="text-sm font-semibold text-[#1f2a44]">{value}</span>
+            <span className="flex items-center gap-1 text-xs text-gray-400">
+                {icon}{label}
+            </span>
+            <span className="text-sm font-semibold text-black">
+                {value}
+            </span>
         </div>
     );
 }
@@ -491,6 +661,12 @@ export default function CustomerBookingPage() {
     const [bookingReference, setBookingReference] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    // Default branch for custom bookings
+    const defaultBranchId = useMemo(() => {
+        if (!store || packages.length === 0) return null;
+        const pkgWithBranch = packages.find((p) => p.branch_id || p.branchId);
+        return pkgWithBranch?.branch_id || pkgWithBranch?.branchId || null;
+    }, [store, packages]);
 
     function clearError(key: string) {
         setFieldErrors((prev) => ({ ...prev, [key]: "" }));
@@ -641,10 +817,11 @@ export default function CustomerBookingPage() {
 
         const reference = generateBookingReference();
 
+        // assign branchId correctly for both package and custom bookings
         const selectedBranchId =
-            selectedPackageData?.branch_id ||
-            selectedPackageData?.branchId ||
-            null;
+            bookingType === "package"
+                ? selectedPackageData?.branch_id || selectedPackageData?.branchId || null
+                : defaultBranchId; // default branch for custom bookings
 
         const newBooking = {
             bookingReference: reference,
@@ -1029,8 +1206,8 @@ export default function CustomerBookingPage() {
                                                 value={date}
                                                 onChange={(e) => { setDate(e.target.value); clearError("date"); }}
                                                 className={`w-full rounded-2xl border py-4 pl-12 pr-4 outline-none transition focus:border-purple-400 ${
-                                                    fieldErrors.date ? "border-red-400 bg-red-50" : "border-gray-200"
-                                                }`}
+                                                    date ? "text-black" : "text-gray-400"
+                                                } ${fieldErrors.date ? "border-red-400 bg-red-50" : "border-gray-200"}`}
                                             />
                                         </div>
                                         {fieldErrors.date && (
@@ -1045,9 +1222,10 @@ export default function CustomerBookingPage() {
                                             type="time"
                                             value={eventTime}
                                             onChange={(e) => { setEventTime(e.target.value); clearError("eventTime"); }}
-                                            className={`w-full rounded-2xl border p-4 outline-none transition focus:border-purple-400 ${
+                                            placeholder="--:--"
+                                            className={`w-full rounded-2xl border p-4 text-black outline-none transition focus:border-purple-400 ${
                                                 fieldErrors.eventTime ? "border-red-400 bg-red-50" : "border-gray-200"
-                                            }`}
+                                            } placeholder:text-gray-400`}
                                         />
                                         {fieldErrors.eventTime && (
                                             <p className="mt-1.5 text-xs font-medium text-red-500">{fieldErrors.eventTime}</p>
@@ -1082,8 +1260,8 @@ export default function CustomerBookingPage() {
                                         onChange={(e) => { setTheme(e.target.value); clearError("theme"); }}
                                         placeholder="Example: pastel pink, safari, princess, floral, minimalist, blue and gold..."
                                         className={`min-h-[120px] w-full resize-none rounded-2xl border p-4 outline-none transition focus:border-purple-400 ${
-                                            fieldErrors.theme ? "border-red-400 bg-red-50" : "border-gray-200"
-                                        }`}
+                                            theme ? "text-black" : "text-gray-400"
+                                        } ${fieldErrors.theme ? "border-red-400 bg-red-50" : "border-gray-200"}`}
                                     />
                                     {fieldErrors.theme && (
                                         <p className="mt-1.5 text-xs font-medium text-red-500">{fieldErrors.theme}</p>
@@ -1100,7 +1278,9 @@ export default function CustomerBookingPage() {
                                         value={notes}
                                         onChange={(e) => setNotes(e.target.value)}
                                         placeholder="Additional requests, backdrop text, celebrant name, age, delivery notes..."
-                                        className="min-h-[120px] w-full resize-none rounded-2xl border border-gray-200 p-4 outline-none transition focus:border-purple-400"
+                                        className={`min-h-[120px] w-full resize-none rounded-2xl border p-4 outline-none transition focus:border-purple-400 ${
+                                            notes ? "text-black" : "text-gray-400"
+                                        }`}
                                     />
                                 </div>
                             </div>
@@ -1212,7 +1392,7 @@ function Input({ label, value, onChange, placeholder, error }: {
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={placeholder}
-                className={`w-full rounded-2xl border p-4 outline-none transition focus:border-purple-400 ${
+                className={`w-full rounded-2xl border p-4 text-black outline-none transition focus:border-purple-400 ${
                     error ? "border-red-400 bg-red-50" : "border-gray-200"
                 }`}
             />
@@ -1229,7 +1409,3 @@ function SummaryItem({ label, value }: { label: string; value: string }) {
         </div>
     );
 }
-
-
-
-

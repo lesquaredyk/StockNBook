@@ -173,9 +173,9 @@ async function decreaseStockForOrder(connection, storeId, items) {
         if (variantId) {
             const [result] = await connection.execute(
                 `UPDATE product_variants pv
-                 INNER JOIN products p ON p.id = pv.product_id
-                 SET pv.stock = GREATEST(pv.stock - ?, 0),
-                     p.stock = GREATEST(p.stock - ?, 0)
+                     INNER JOIN products p ON p.id = pv.product_id
+                     SET pv.stock = GREATEST(pv.stock - ?, 0),
+                         p.stock = GREATEST(p.stock - ?, 0)
                  WHERE pv.id = ? AND p.store_id = ?`,
                 [qty, qty, variantId, storeId]
             );
@@ -192,9 +192,9 @@ async function decreaseStockForOrder(connection, storeId, items) {
 
             const [result] = await connection.execute(
                 `UPDATE product_variants pv
-                 INNER JOIN products p ON p.id = pv.product_id
-                 SET pv.stock = GREATEST(pv.stock - ?, 0),
-                     p.stock = GREATEST(p.stock - ?, 0)
+                     INNER JOIN products p ON p.id = pv.product_id
+                     SET pv.stock = GREATEST(pv.stock - ?, 0),
+                         p.stock = GREATEST(p.stock - ?, 0)
                  WHERE pv.product_id = ?
                    AND p.store_id = ?
                    AND ${tokenWhere}`,
@@ -213,9 +213,9 @@ async function decreaseStockForOrder(connection, storeId, items) {
 
             const [result] = await connection.execute(
                 `UPDATE product_variants pv
-                 INNER JOIN products p ON p.id = pv.product_id
-                 SET pv.stock = GREATEST(pv.stock - ?, 0),
-                     p.stock = GREATEST(p.stock - ?, 0)
+                     INNER JOIN products p ON p.id = pv.product_id
+                     SET pv.stock = GREATEST(pv.stock - ?, 0),
+                         p.stock = GREATEST(p.stock - ?, 0)
                  WHERE LOWER(p.name) = LOWER(?)
                    AND p.store_id = ?
                    AND ${tokenWhere}`,
@@ -338,8 +338,8 @@ exports.handler = async (event) => {
 
             const [result] = await connection.execute(
                 `INSERT INTO orders
-         (order_id, store_id, customer_name, item, total, order_date)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+                     (order_id, store_id, customer_name, item, total, order_date)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
                 [orderId, store_id, customerName, item, total, normalizedOrderDate]
             );
 
@@ -409,8 +409,8 @@ exports.handler = async (event) => {
 
             const [result] = await connection.execute(
                 `UPDATE orders
-         SET customer_name=?, item=?, total=?, order_date=?
-         WHERE order_id=? AND store_id=?`,
+                 SET customer_name=?, item=?, total=?, order_date=?
+                 WHERE order_id=? AND store_id=?`,
                 [customerName, item, total, normalizedOrderDate, orderId, store_id]
             );
 
