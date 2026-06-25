@@ -206,10 +206,10 @@ function Card({
 }) {
     return (
         <section
-            className={`rounded-xl border border-[#E8E0F1] bg-white p-4 shadow-[0_2px_10px_rgba(59,34,87,0.04)] ${className}`}
+            className={`rounded-[14px] border border-[#E6DDF0] bg-white p-3 shadow-sm ${className}`}
         >
-            <div className="mb-4 flex items-start justify-between gap-3">
-                <h2 className="flex items-center gap-1.5 font-serif text-[18px] font-semibold text-[#281448]">
+            <div className="mb-3 flex items-start justify-between gap-3">
+                <h2 className="flex items-center gap-1.5 text-[16px] font-bold text-[#1A1220]">
                     {title}
                     <Info size={14} className="text-[#A58DBF]" />
                 </h2>
@@ -324,7 +324,7 @@ function SalesLineChart({
         <div className="overflow-x-auto">
             <svg
                 viewBox="0 0 590 182"
-                className="h-[190px] min-w-[560px] w-full"
+                className="h-[190px] min-w-[560px] w-full font-sans"
                 role="img"
                 aria-label={ariaLabel}
             >
@@ -469,7 +469,7 @@ function DonutChart({
             aria-label={centerLabel}
         >
             <div className="flex h-[99px] w-[99px] flex-col items-center justify-center rounded-full bg-white px-2 text-center">
-                <p className="font-serif text-[18px] font-bold leading-tight text-[#281448]">{totalLabel}</p>
+                <p className="text-[18px] font-bold leading-tight text-[#281448]">{totalLabel}</p>
                 <p className="mt-1 text-[10px] leading-tight text-[#806D91]">{centerLabel}</p>
             </div>
         </div>
@@ -523,14 +523,13 @@ function AnalyticsShell({ children }: { children: ReactNode }) {
     return (
         <RequirePermission>
             <div
-                style={{
-                    backgroundColor: "#FDFAF4",
-                    fontFamily: "Georgia, 'Times New Roman', serif",
-                }}
-                className="flex min-h-screen overflow-x-hidden text-[#1A1220]"
+                className="flex min-h-screen overflow-x-hidden font-sans text-[#1A1220]"
+                style={{ backgroundColor: "#FDFAF4" }}
             >
                 <RoleSidebar />
-                <div className="min-w-0 flex-1 overflow-x-hidden">{children}</div>
+                <div className="min-w-0 flex-1 overflow-x-hidden font-sans">
+                    {children}
+                </div>
             </div>
         </RequirePermission>
     );
@@ -612,22 +611,25 @@ export default function AnalyticsPage() {
     return (
         <AnalyticsShell>
             <main className="min-h-screen bg-[#FDFAF4]">
-                <header className="border-b border-[#E8E0F1] bg-white px-6 py-4">
-                    <div className="flex flex-wrap items-center justify-between gap-4">
+                <header className="sticky top-0 z-20 border-b border-[#E9E0EF] bg-[#FFFDF8]/95 backdrop-blur">
+                    <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-3">
                         <div className="flex items-center gap-3">
-                            <h1 className="font-serif text-2xl font-semibold text-[#281448]">Analytics</h1>
-                            <span className="rounded-md bg-[#F0E9FB] px-3 py-1 text-xs font-semibold text-[#5B318D]">
+                            <h1 className="text-[25px] font-bold text-[#1A1220]">
+                                Analytics
+                            </h1>
+
+                            <span className="rounded-lg bg-[#EFE8F8] px-3.5 py-1.5 text-sm font-medium text-[#4E2C66]">
                                 {user.branch_name || "Makati Branch"}
                             </span>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                            <label className="flex items-center gap-2 rounded-lg border border-[#E8E0F1] bg-white px-3 py-2 text-sm text-[#6F5A82]">
-                                <CalendarDays size={15} className="text-[#77509D]" />
+                        <div className="flex flex-wrap items-center gap-2.5">
+                            <label className="flex items-center gap-2 rounded-xl border border-[#E6DDF0] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#2B174C] shadow-sm">
+                                <CalendarDays size={14} className="text-[#2B174C]" />
                                 <select
                                     value={period}
                                     onChange={(event) => setPeriod(event.target.value)}
-                                    className="bg-transparent text-sm outline-none"
+                                    className="bg-transparent text-sm font-semibold text-[#2B174C] outline-none"
                                 >
                                     <option value="30">Next 30 Days</option>
                                     <option value="60">Next 60 Days</option>
@@ -638,21 +640,21 @@ export default function AnalyticsPage() {
                             <button
                                 onClick={loadAnalytics}
                                 disabled={loading}
-                                className="inline-flex items-center gap-2 rounded-lg bg-[#2D1B4E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#482A75] disabled:cursor-not-allowed disabled:opacity-60"
+                                className="inline-flex items-center gap-2 rounded-xl bg-[#2B174C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1B0D31] disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+                                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
                                 Refresh
                             </button>
                         </div>
                     </div>
                 </header>
 
-                <div className="space-y-4 p-5 lg:p-6">
+                <div className="space-y-3 px-6 py-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm text-[#806D91]">
+                        <p className="text-sm text-[#7A6A84]">
                             Business performance from inventory sales and booking activity.
                         </p>
-                        <p className="text-xs text-[#9B88AB]">
+                        <p className="text-xs text-[#806A8C]">
                             Updated {new Date(data.generatedAt).toLocaleTimeString("en-PH", {
                             hour: "2-digit",
                             minute: "2-digit",
@@ -660,12 +662,12 @@ export default function AnalyticsPage() {
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                         <Card title="Sales Growth">
-                            <div className="grid gap-5 md:grid-cols-[190px_minmax(0,1fr)]">
+                            <div className="grid gap-4 md:grid-cols-[190px_minmax(0,1fr)]">
                                 <div className="border-b border-[#EEE8F3] pb-4 md:border-b-0 md:border-r md:pb-0 md:pr-4">
                                     <p className="text-[11px] text-[#806D91]">Current Growth</p>
-                                    <p className="mt-2 text-4xl font-bold tracking-tight text-[#7B3FE4]">
+                                    <p className="mt-2 text-[28px] font-bold tracking-tight text-[#7B3FE4]">
                                         {data.salesGrowth.value > 0 ? "+" : ""}
                                         {data.salesGrowth.value}%
                                     </p>
@@ -697,7 +699,7 @@ export default function AnalyticsPage() {
                             title="Sales Trend"
                             action={
                                 <div className="flex flex-wrap items-center justify-end gap-2">
-                                    <div className="flex rounded-lg border border-[#E8E0F1] bg-[#FBF9FD] p-1 text-[10px] font-semibold">
+                                    <div className="flex rounded-xl border border-[#E6DDF0] bg-white p-1 text-xs font-semibold shadow-sm">
                                         <button
                                             type="button"
                                             onClick={() => setSalesView("month")}
@@ -728,7 +730,7 @@ export default function AnalyticsPage() {
                                             onChange={(event) =>
                                                 setSelectedSalesMonth(event.target.value)
                                             }
-                                            className="rounded-lg border border-[#E8E0F1] bg-white px-2.5 py-1.5 text-[10px] font-medium text-[#6F5A82] outline-none"
+                                            className="rounded-xl border border-[#E6DDF0] bg-white px-2.5 py-1.5 text-xs font-medium text-[#2B174C] outline-none shadow-sm"
                                             aria-label="Select month for daily sales chart"
                                         >
                                             {availableSalesMonths.map((month) => (
@@ -754,7 +756,7 @@ export default function AnalyticsPage() {
                                             ? "Latest Monthly Sales"
                                             : `${resolvedSalesMonth} Total Sales`}
                                     </p>
-                                    <p className="font-serif text-xl font-bold text-[#7B3FE4]">
+                                    <p className="text-[19px] font-bold text-[#7B3FE4]">
                                         {peso(activeSalesTotal)}
                                     </p>
                                     {salesView === "month" && (
@@ -784,7 +786,7 @@ export default function AnalyticsPage() {
                                 </span>
                                 <div>
                                     <p className="text-[10px] text-[#806D91]">Peak Day</p>
-                                    <p className="text-base font-semibold text-[#6B2AC6]">{data.peakBookings.peakDay}</p>
+                                    <p className="text-[16px] font-bold text-[#6B2AC6]">{data.peakBookings.peakDay}</p>
                                 </div>
                             </div>
 
@@ -794,7 +796,7 @@ export default function AnalyticsPage() {
                                 </span>
                                 <div>
                                     <p className="text-[10px] text-[#806D91]">Peak Time</p>
-                                    <p className="text-base font-semibold text-[#6B2AC6]">{data.peakBookings.peakTime}</p>
+                                    <p className="text-[16px] font-bold text-[#6B2AC6]">{data.peakBookings.peakTime}</p>
                                 </div>
                             </div>
 
@@ -804,7 +806,7 @@ export default function AnalyticsPage() {
                                 </span>
                                 <div>
                                     <p className="text-[10px] text-[#806D91]">Weekend Peak</p>
-                                    <p className="text-base font-semibold text-[#6B2AC6]">{data.peakBookings.weekendPercentage}%</p>
+                                    <p className="text-[16px] font-bold text-[#6B2AC6]">{data.peakBookings.weekendPercentage}%</p>
                                 </div>
                             </div>
 
@@ -814,7 +816,7 @@ export default function AnalyticsPage() {
                                 </span>
                                 <div>
                                     <p className="text-[10px] text-[#806D91]">Weekday Peak</p>
-                                    <p className="text-base font-semibold text-[#6B2AC6]">{data.peakBookings.weekdayPeak}</p>
+                                    <p className="text-[16px] font-bold text-[#6B2AC6]">{data.peakBookings.weekdayPeak}</p>
                                     <p className="text-[9px] text-[#806D91]">{data.peakBookings.weekdayPeakTime}</p>
                                 </div>
                             </div>
@@ -841,9 +843,9 @@ export default function AnalyticsPage() {
                         </div>
                     </Card>
 
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                         <Card title="Product Revenue Analytics">
-                            <div className="grid items-center gap-5 sm:grid-cols-[166px_minmax(0,1fr)]">
+                            <div className="grid items-center gap-4 sm:grid-cols-[166px_minmax(0,1fr)]">
                                 <DonutChart
                                     items={data.productRevenue}
                                     totalLabel={peso(total(data.productRevenue))}
@@ -856,12 +858,12 @@ export default function AnalyticsPage() {
                         <Card
                             title="Package Revenue Analytics"
                             action={
-                                <span className="rounded-md border border-[#E8E0F1] px-3 py-1.5 text-[10px] font-medium text-[#6F5A82]">
+                                <span className="rounded-xl border border-[#E6DDF0] bg-white px-3 py-1.5 text-xs font-medium text-[#2B174C] shadow-sm">
                                     {data.periodLabel}
                                 </span>
                             }
                         >
-                            <div className="grid items-center gap-5 sm:grid-cols-[166px_minmax(0,1fr)]">
+                            <div className="grid items-center gap-4 sm:grid-cols-[166px_minmax(0,1fr)]">
                                 <DonutChart
                                     items={data.packageRevenue}
                                     totalLabel={peso(total(data.packageRevenue))}

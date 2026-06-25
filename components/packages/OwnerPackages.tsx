@@ -1,398 +1,604 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+    Building2,
+    CalendarDays,
+    Check,
+    ChevronDown,
+    RefreshCw,
+    Search,
+} from "lucide-react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
+import {
+    EmptyState,
+    getPackageCategory,
+    getToken,
+    PACKAGE_CATEGORY_OPTIONS,
+    PackageCard,
+    type PackageCategory,
+    type PackageItem,
+} from "./_shared";
 
-type BranchFromApi = {
-    id: number;
-    branch_name: string;
-    manager_name?: string;
-    manager_status?: string;
+type RawBranch = {
+    id?: number | string;
+    branch_id?: number | string;
+    branchId?: number | string;
+    branch_name?: string | null;
+    branchName?: string | null;
+    name?: string | null;
 };
 
-type BranchRowData = {
+type Branch = {
     id: number;
-    branch: string;
-    manager: string;
-    activePackages: number;
-    inactivePackages: number;
-    lastUpdated: string;
-    status: string;
+    name: string;
 };
+
+type BranchesResponse = {
+    branches?: RawBranch[];
+    error?: string;
+};
+
+type PackagesResponse = {
+    packages?: PackageItem[];
+    error?: string;
+};
+
+function normalizeBranch(rawBranch: RawBranch): Branch | null {
+    const rawId =
+        rawBranch.id ?? rawBranch.branch_id ?? rawBranch.branchId ?? null;
+
+    const id = Number(rawId);
+    const name =
+        rawBranch.branch_name ??
+        rawBranch.branchName ??
+        rawBranch.name ??
+        "";
+
+    if (!Number.isFinite(id) || id <= 0 || !name.trim()) {
+        return null;
+    }
+
+    return {
+        id,
+        name: name.trim(),
+    };
+}
 
 export default function OwnerPackages() {
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [selectedBranchId, setSelectedBranchId] = useState<number | null>(
+        null
+    );
+    const [packages, setPackages] = useState<PackageItem[]>([]);
+    const [loadedPackageBranchId, setLoadedPackageBranchId] = useState<
+        number | null
+    >(null);
+
     const [search, setSearch] = useState("");
-    const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
-    const [branches, setBranches] = useState<BranchFromApi[]>([]);
-    const [packagesByBranch, setPackagesByBranch] = useState<Record<number, any[]>>({});
+    const [selectedCategory, setSelectedCategory] =
+        useState<PackageCategory>("All");
 
-    function getToken() {
-        return sessionStorage.getItem("token") || localStorage.getItem("token") || "";
-    }
+    const [branchQuery, setBranchQuery] = useState("");
+    const [isBranchMenuOpen, setIsBranchMenuOpen] = useState(false);
 
-    function peso(n: number) {
-        return `₱${Number(n || 0).toLocaleString("en-PH", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-        })}`;
-    }
+    const [loadingBranches, setLoadingBranches] = useState(true);
+    const [loadingPackages, setLoadingPackages] = useState(false);
+    const [error, setError] = useState("");
 
-    function formatText(value: string) {
-        if (!value) return "";
+    const branchSelectorRef = useRef<HTMLDivElement>(null);
 
-        return value
-            .toLowerCase()
-            .split(" ")
-            .filter(Boolean)
-            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(" ");
-    }
+    const selectedBranch =
+        branches.find((branch) => branch.id === selectedBranchId) ?? null;
 
-    async function fetchBranches() {
+    const matchingBranches = useMemo(() => {
+        const query = branchQuery.trim().toLowerCase();
+
+        if (!query) return branches;
+
+        return branches.filter((branch) =>
+            branch.name.toLowerCase().includes(query)
+        );
+    }, [branches, branchQuery]);
+
+    const loadBranches = useCallback(async (signal?: AbortSignal) => {
+        setLoadingBranches(true);
+        setError("");
+
         try {
-            const res = await fetch("/api/branches", {
-                headers: {
-                    Authorization: `Bearer ${getToken()}`,
-                },
+            const token = getToken();
+
+            const response = await fetch("/api/branches", {
+                method: "GET",
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                signal,
             });
 
-            const data = await res.json();
-            const loadedBranches = data.branches || [];
+            if (!response.ok) {
+                throw new Error("Unable to load branches.");
+            }
+
+            const data = (await response.json()) as BranchesResponse;
+            const loadedBranches = Array.isArray(data.branches)
+                ? data.branches
+                    .map(normalizeBranch)
+                    .filter((branch): branch is Branch => branch !== null)
+                : [];
+
+            if (signal?.aborted) return;
 
             setBranches(loadedBranches);
 
-            if (loadedBranches.length > 0) {
-                setSelectedBranchId((prev) => prev || loadedBranches[0].id);
+            // Do not assign a default branch. The owner must choose one.
+            setSelectedBranchId((currentBranchId) => {
+                const isStillAvailable = loadedBranches.some(
+                    (branch) => branch.id === currentBranchId
+                );
 
-                loadedBranches.forEach((branch: BranchFromApi) => {
-                    fetchPackagesForBranch(branch.id);
-                });
-            }
-        } catch {
-            setBranches([]);
-        }
-    }
-
-    async function fetchPackagesForBranch(branch_id: number) {
-        try {
-            const res = await fetch("/api/packages", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${getToken()}`,
-                },
-                body: JSON.stringify({
-                    action: "get_packages",
-                    branch_id,
-                }),
+                return isStillAvailable ? currentBranchId : null;
             });
+        } catch (requestError) {
+            if (signal?.aborted) return;
 
-            const data = await res.json();
-
-            setPackagesByBranch((prev) => ({
-                ...prev,
-                [branch_id]: data.packages || [],
-            }));
-        } catch {
-            setPackagesByBranch((prev) => ({
-                ...prev,
-                [branch_id]: [],
-            }));
+            console.error("OWNER PACKAGES BRANCH ERROR:", requestError);
+            setBranches([]);
+            setSelectedBranchId(null);
+            setPackages([]);
+            setLoadedPackageBranchId(null);
+            setBranchQuery("");
+            setError("Unable to load branches. Please refresh and try again.");
+        } finally {
+            if (!signal?.aborted) {
+                setLoadingBranches(false);
+            }
         }
-    }
-
-    useEffect(() => {
-        fetchBranches();
     }, []);
 
-    const branchRows = useMemo(() => {
-        return branches.map((branch) => {
-            const branchPackages = packagesByBranch[branch.id] || [];
-            const activePackages = branchPackages.filter((pkg) => pkg.status === "Active").length;
-            const inactivePackages = branchPackages.filter((pkg) => pkg.status === "Inactive").length;
+    const loadPackagesForBranch = useCallback(
+        async (branchId: number, signal?: AbortSignal) => {
+            setLoadingPackages(true);
+            setError("");
 
-            return {
-                id: branch.id,
-                branch: branch.branch_name,
-                manager: branch.manager_name || "—",
-                activePackages,
-                inactivePackages,
-                lastUpdated: branchPackages.length > 0 ? "Updated" : "—",
-                status: branchPackages.length > 0 ? "Ready" : "Needs setup",
-            };
+            try {
+                const token = getToken();
+
+                const response = await fetch("/api/packages", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({
+                        action: "get_packages",
+                        branch_id: branchId,
+                    }),
+                    signal,
+                });
+
+                if (!response.ok) {
+                    throw new Error("Unable to load packages.");
+                }
+
+                const data = (await response.json()) as PackagesResponse;
+
+                if (signal?.aborted) return;
+
+                setPackages(
+                    Array.isArray(data.packages) ? data.packages : []
+                );
+                setLoadedPackageBranchId(branchId);
+            } catch (requestError) {
+                if (signal?.aborted) return;
+
+                console.error("OWNER PACKAGES LOAD ERROR:", requestError);
+                setPackages([]);
+                setLoadedPackageBranchId(branchId);
+                setError(
+                    "Unable to load packages for this branch. Please try again."
+                );
+            } finally {
+                if (!signal?.aborted) {
+                    setLoadingPackages(false);
+                }
+            }
+        },
+        []
+    );
+
+    useEffect(() => {
+        const controller = new AbortController();
+
+        const frameId = window.requestAnimationFrame(() => {
+            void loadBranches(controller.signal);
         });
-    }, [branches, packagesByBranch]);
 
-    const selectedBranch = branchRows.find((branch) => branch.id === selectedBranchId);
-    const selectedPackages = selectedBranchId ? packagesByBranch[selectedBranchId] || [] : [];
+        return () => {
+            window.cancelAnimationFrame(frameId);
+            controller.abort();
+        };
+    }, [loadBranches]);
 
-    const filteredBranches = useMemo(() => {
-        const q = search.trim().toLowerCase();
+    useEffect(() => {
+        if (!selectedBranchId) return;
 
-        return branchRows.filter(
-            (branch) =>
-                branch.branch.toLowerCase().includes(q) ||
-                branch.manager.toLowerCase().includes(q) ||
-                branch.status.toLowerCase().includes(q)
-        );
-    }, [search, branchRows]);
+        const controller = new AbortController();
+
+        const frameId = window.requestAnimationFrame(() => {
+            void loadPackagesForBranch(selectedBranchId, controller.signal);
+        });
+
+        return () => {
+            window.cancelAnimationFrame(frameId);
+            controller.abort();
+        };
+    }, [selectedBranchId, loadPackagesForBranch]);
+
+    useEffect(() => {
+        const closeBranchMenuOnOutsideClick = (event: MouseEvent) => {
+            if (
+                branchSelectorRef.current &&
+                !branchSelectorRef.current.contains(event.target as Node)
+            ) {
+                setIsBranchMenuOpen(false);
+
+                if (selectedBranch) {
+                    setBranchQuery(selectedBranch.name);
+                } else {
+                    setBranchQuery("");
+                }
+            }
+        };
+
+        document.addEventListener("mousedown", closeBranchMenuOnOutsideClick);
+
+        return () => {
+            document.removeEventListener(
+                "mousedown",
+                closeBranchMenuOnOutsideClick
+            );
+        };
+    }, [selectedBranch]);
+
+    const filteredPackages = useMemo(() => {
+        const query = search.trim().toLowerCase();
+
+        return packages.filter((pkg) => {
+            const matchesSearch =
+                !query ||
+                pkg.name.toLowerCase().includes(query) ||
+                (pkg.description || "").toLowerCase().includes(query) ||
+                (pkg.duration || "").toLowerCase().includes(query);
+
+            const matchesCategory =
+                selectedCategory === "All" ||
+                getPackageCategory(pkg) === selectedCategory;
+
+            return matchesSearch && matchesCategory;
+        });
+    }, [packages, search, selectedCategory]);
+
+    const hasLoadedSelectedBranch =
+        selectedBranchId !== null &&
+        loadedPackageBranchId === selectedBranchId;
+
+    const handleSelectBranch = (branch: Branch) => {
+        setSelectedBranchId(branch.id);
+        setBranchQuery(branch.name);
+        setIsBranchMenuOpen(false);
+        setSearch("");
+        setSelectedCategory("All");
+        setPackages([]);
+        setLoadedPackageBranchId(null);
+    };
+
+    const handleBranchInputFocus = () => {
+        setIsBranchMenuOpen(true);
+
+        if (selectedBranch && branchQuery === selectedBranch.name) {
+            setBranchQuery("");
+        }
+    };
+
+    const handleRefresh = async () => {
+        await loadBranches();
+
+        if (selectedBranchId) {
+            await loadPackagesForBranch(selectedBranchId);
+        }
+    };
 
     return (
         <>
-            <div className="flex h-[54px] items-center justify-between border-b border-[#EBE4F0] bg-white px-5">
-                <div className="flex items-center gap-3">
-                    <h1 className="text-[18px] font-medium text-[#1A1220]">
-                        Packages
-                    </h1>
+            <header className="sticky top-0 z-20 border-b border-[#E9E0EF] bg-[#FFFDF8]/95 font-sans backdrop-blur">
+                <div className="flex items-center justify-between px-6 py-3">
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-[25px] font-bold text-[#1A1220]">
+                            Packages
+                        </h1>
 
-                    <span className="rounded-[6px] bg-[#FFFBF0] px-3 py-1 text-[11px] font-medium text-[#633806]">
-                        All branches
-                    </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    <span className="rounded-[7px] border border-[#EBE4F0] bg-white px-4 py-1.5 text-[11px] text-[#7A6E88]">
-                        {new Date().toLocaleDateString("en-US", {
-                            month: "long",
-                            year: "numeric",
-                        })}
-                    </span>
-
-                    <button className="flex h-[32px] w-[32px] items-center justify-center rounded-[7px] border border-[#EBE4F0] bg-white text-[12px] text-[#C9951A]">
-                        ●
-                    </button>
-
-                    <div className="flex h-[36px] w-[36px] items-center justify-center rounded-full bg-[#C9951A] text-[12px] font-medium text-white">
-                        YS
+                        <span className="rounded-lg bg-[#EFE8F8] px-3.5 py-1.5 text-sm font-medium text-[#4E2C66]">
+                            All branches
+                        </span>
                     </div>
-                </div>
-            </div>
 
-            <section className="p-5">
-                <div className="space-y-3">
-                    <div className="flex gap-3">
-                        <input
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search branch, manager, or status..."
-                            className="h-[42px] flex-1 rounded-[10px] border border-[#EBE4F0] bg-white px-4 text-[12px] text-[#1A1220] placeholder:text-[#9B8EA8] outline-none transition focus:border-[#2D1B4E]"
-                        />
+                    <div className="flex items-center gap-2.5">
+                        <button
+                            type="button"
+                            className="inline-flex items-center gap-2 rounded-xl border border-[#E6DDF0] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#2B174C] shadow-sm hover:bg-[#F7F1FF]"
+                        >
+                            <CalendarDays size={14} />
+                            {new Date().toLocaleDateString("en-US", {
+                                month: "long",
+                                year: "numeric",
+                            })}
+                            <ChevronDown size={13} />
+                        </button>
 
-                        <button className="h-[42px] rounded-[10px] border border-[#EBE4F0] bg-white px-4 text-[12px] font-semibold text-[#2D1B4E] transition hover:bg-[#EEE8F8]">
-                            All status
+                        <button
+                            type="button"
+                            onClick={() => void handleRefresh()}
+                            className="inline-flex items-center gap-2 rounded-xl bg-[#2B174C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1B0D31]"
+                        >
+                            <RefreshCw size={14} />
+                            Refresh packages
                         </button>
                     </div>
+                </div>
+            </header>
 
-                    <div className="grid grid-cols-[1.35fr_0.85fr] gap-3">
-                        <Card className="min-h-[345px]">
-                            <CardHeader
-                                title="Branch Package Overview"
-                                action={`${filteredBranches.length} branches`}
+            <section className="px-6 py-4 font-sans">
+                <div className="space-y-3">
+                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_290px]">
+                        <div className="relative">
+                            <Search
+                                size={15}
+                                className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9B8AAA]"
+                            />
+                            <input
+                                value={search}
+                                onChange={(event) =>
+                                    setSearch(event.target.value)
+                                }
+                                disabled={!selectedBranchId}
+                                placeholder={
+                                    selectedBranchId
+                                        ? "Search packages..."
+                                        : "Select a branch first"
+                                }
+                                className="w-full rounded-xl border border-[#E3D8EA] bg-white px-4 py-2.5 pl-10 text-sm text-[#1A1220] outline-none shadow-sm placeholder:text-[#9B8AAA] focus:border-[#2B174C] disabled:cursor-not-allowed disabled:bg-[#FCFAFD] disabled:text-[#9B8AAA]"
+                            />
+                        </div>
+
+                        <div ref={branchSelectorRef} className="relative">
+                            <Building2
+                                size={15}
+                                className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-[#9B8AAA]"
                             />
 
-                            <div className="overflow-hidden rounded-[10px] border border-[#F5EEF6]">
-                                <div className="grid grid-cols-[1.1fr_0.8fr_0.9fr_0.8fr_0.8fr_0.7fr] border-b border-[#F5EEF6] bg-[#FDFAF4] px-3 py-2.5 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-[#7A6E88]">
-                                    <div>Branch</div>
-                                    <div>Manager</div>
-                                    <div>Packages</div>
-                                    <div>Updated</div>
-                                    <div>Status</div>
-                                    <div></div>
-                                </div>
+                            <input
+                                value={branchQuery}
+                                onFocus={handleBranchInputFocus}
+                                onChange={(event) => {
+                                    setBranchQuery(event.target.value);
+                                    setIsBranchMenuOpen(true);
+                                }}
+                                onKeyDown={(event) => {
+                                    if (
+                                        event.key === "Escape" ||
+                                        event.key === "Tab"
+                                    ) {
+                                        setIsBranchMenuOpen(false);
+                                    }
+                                }}
+                                disabled={loadingBranches}
+                                placeholder={
+                                    loadingBranches
+                                        ? "Loading branches..."
+                                        : "Search or select branch..."
+                                }
+                                className="w-full rounded-xl border border-[#E3D8EA] bg-white px-10 py-2.5 pr-10 text-sm font-semibold text-[#1A1220] outline-none shadow-sm placeholder:font-normal placeholder:text-[#9B8AAA] focus:border-[#2B174C] disabled:cursor-not-allowed disabled:opacity-60"
+                                role="combobox"
+                                aria-expanded={isBranchMenuOpen}
+                                aria-controls="owner-package-branch-options"
+                                aria-autocomplete="list"
+                            />
 
-                                {filteredBranches.map((branch) => (
-                                    <BranchRow
-                                        key={branch.id}
-                                        branch={branch}
-                                        selected={branch.id === selectedBranchId}
-                                        onSelect={() => setSelectedBranchId(branch.id)}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsBranchMenuOpen((isOpen) => !isOpen);
+
+                                    if (!isBranchMenuOpen) {
+                                        setBranchQuery("");
+                                    }
+                                }}
+                                className="absolute right-0 top-0 flex h-full w-10 items-center justify-center text-[#2B174C]"
+                                aria-label="Show branch choices"
+                            >
+                                <ChevronDown
+                                    size={14}
+                                    className={`transition ${
+                                        isBranchMenuOpen ? "rotate-180" : ""
+                                    }`}
+                                />
+                            </button>
+
+                            {isBranchMenuOpen && !loadingBranches && (
+                                <div
+                                    id="owner-package-branch-options"
+                                    className="absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-[#D8CBE7] bg-white py-1 shadow-lg"
+                                    role="listbox"
+                                >
+                                    {matchingBranches.length === 0 ? (
+                                        <p className="px-4 py-3 text-sm text-[#7A6A84]">
+                                            No matching branch found.
+                                        </p>
+                                    ) : (
+                                        matchingBranches.map((branch) => {
+                                            const isSelected =
+                                                branch.id === selectedBranchId;
+
+                                            return (
+                                                <button
+                                                    key={branch.id}
+                                                    type="button"
+                                                    role="option"
+                                                    aria-selected={isSelected}
+                                                    onMouseDown={(event) =>
+                                                        event.preventDefault()
+                                                    }
+                                                    onClick={() =>
+                                                        handleSelectBranch(
+                                                            branch
+                                                        )
+                                                    }
+                                                    className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition ${
+                                                        isSelected
+                                                            ? "bg-[#F1E9FF] font-semibold text-[#2B174C]"
+                                                            : "text-[#1A1220] hover:bg-[#F7F1FF]"
+                                                    }`}
+                                                >
+                                                    <span className="truncate">
+                                                        {branch.name}
+                                                    </span>
+
+                                                    {isSelected && (
+                                                        <Check
+                                                            size={15}
+                                                            className="shrink-0"
+                                                        />
+                                                    )}
+                                                </button>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {selectedBranchId && (
+                        <div className="rounded-[14px] border border-[#E6DDF0] bg-white p-3 shadow-sm">
+                            <div className="mb-2 flex items-center justify-between gap-3">
+                                <h2 className="text-sm font-bold text-[#1A1220]">
+                                    Categories
+                                </h2>
+
+                                <span className="text-xs font-semibold text-[#806A8C]">
+                                    {PACKAGE_CATEGORY_OPTIONS.length - 1} categories
+                                </span>
+                            </div>
+
+                            <div className="overflow-x-auto pb-1">
+                                <div className="flex min-w-max gap-2">
+                                    {PACKAGE_CATEGORY_OPTIONS.map(
+                                        (category) => {
+                                            const selected =
+                                                selectedCategory === category;
+
+                                            return (
+                                                <button
+                                                    key={category}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setSelectedCategory(
+                                                            category
+                                                        )
+                                                    }
+                                                    aria-pressed={selected}
+                                                    className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+                                                        selected
+                                                            ? "bg-[#2B174C] text-white shadow-sm"
+                                                            : "border border-[#E6DDF0] bg-white text-[#5F4E75] hover:bg-[#F7F1FF]"
+                                                    }`}
+                                                >
+                                                    {category}
+                                                </button>
+                                            );
+                                        }
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {error && (
+                        <div className="rounded-xl border border-[#F3C4C4] bg-[#FFF2F2] px-3 py-2.5 text-xs font-medium text-[#9B1C1C]">
+                            {error}
+                        </div>
+                    )}
+
+                    <section className="min-h-[440px] rounded-[14px] border border-[#E6DDF0] bg-white p-3 shadow-sm">
+                        <div className="mb-3 flex items-center justify-between gap-4">
+                            <div>
+                                <h2 className="text-[16px] font-bold text-[#1A1220]">
+                                    {selectedBranch
+                                        ? `${selectedBranch.name} Package List`
+                                        : "Branch Package List"}
+                                </h2>
+
+                                <p className="mt-0.5 text-xs text-[#7A6A84]">
+                                    {selectedBranch
+                                        ? "Packages available in the selected branch."
+                                        : "Choose a branch using the branch selector above."}
+                                </p>
+                            </div>
+
+                            {selectedBranchId && (
+                                <span className="shrink-0 text-xs font-semibold text-[#806A8C]">
+                                    {filteredPackages.length} package
+                                    {filteredPackages.length !== 1
+                                        ? "s"
+                                        : ""}
+                                </span>
+                            )}
+                        </div>
+
+                        {loadingBranches ? (
+                            <EmptyState
+                                title="Loading branches..."
+                                detail="Please wait while branch choices are being loaded."
+                            />
+                        ) : !selectedBranchId ? (
+                            <EmptyState
+                                title="Select a branch"
+                                detail="Search or choose a branch above to view its packages."
+                            />
+                        ) : loadingPackages || !hasLoadedSelectedBranch ? (
+                            <EmptyState
+                                title="Loading branch packages..."
+                                detail="Please wait while packages are being loaded."
+                            />
+                        ) : filteredPackages.length === 0 ? (
+                            <EmptyState
+                                title="No packages found."
+                                detail={
+                                    search || selectedCategory !== "All"
+                                        ? "Try a different search or category."
+                                        : "This branch does not have packages yet."
+                                }
+                            />
+                        ) : (
+                            <div className="grid grid-cols-[repeat(auto-fill,260px)] gap-4">
+                                {filteredPackages.map((pkg) => (
+                                    <PackageCard
+                                        key={pkg.id}
+                                        pkg={pkg}
+                                        canManage={false}
+                                        onEdit={() => undefined}
+                                        onDelete={() => undefined}
                                     />
                                 ))}
                             </div>
-                        </Card>
-
-                        <Card className="min-h-[345px]">
-                            <CardHeader
-                                title={selectedBranch?.branch || "Branch Packages"}
-                                action="Package list"
-                            />
-
-                            {selectedPackages.length === 0 ? (
-                                <div className="flex min-h-[245px] items-center justify-center rounded-[10px] bg-[#FDFAF4] px-4 text-center">
-                                    <div>
-                                        <p className="text-[12px] font-semibold text-[#1A1220]">
-                                            No packages yet.
-                                        </p>
-
-                                        <p className="mt-1 text-[10px] leading-4 text-[#7A6E88]">
-                                            This branch needs package setup from the assigned manager.
-                                        </p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-2.5">
-                                    {selectedPackages.map((pkg) => (
-                                        <PackagePreview
-                                            key={pkg.id}
-                                            name={formatText(pkg.name)}
-                                            price={peso(pkg.package_price)}
-                                            inclusions={
-                                                pkg.inclusions && pkg.inclusions.length > 0
-                                                    ? pkg.inclusions
-                                                        .map(
-                                                            (item: any) =>
-                                                                `${formatText(item.productName)} × ${item.quantity}`
-                                                        )
-                                                        .join(", ")
-                                                    : formatText(pkg.description || "No inclusions listed.")
-                                            }
-                                            status={formatText(pkg.status)}
-                                        />
-                                    ))}
-                                </div>
-                            )}
-                        </Card>
-                    </div>
+                        )}
+                    </section>
                 </div>
             </section>
         </>
     );
 }
-
-function Card({
-                  children,
-                  className = "",
-              }: {
-    children: React.ReactNode;
-    className?: string;
-}) {
-    return (
-        <div
-            className={`rounded-[12px] border border-[#EBE4F0] bg-white p-3.5 ${className}`}
-        >
-            {children}
-        </div>
-    );
-}
-
-function CardHeader({
-                        title,
-                        action,
-                    }: {
-    title: string;
-    action?: string;
-}) {
-    return (
-        <div className="mb-3 flex items-center justify-between gap-4">
-            <h2 className="whitespace-nowrap text-[14px] font-medium leading-none text-[#1A1220]">
-                {title}
-            </h2>
-
-            {action && (
-                <span className="shrink-0 whitespace-nowrap text-[10px] font-semibold leading-none text-[#2D1B4E]">
-                    {action}
-                </span>
-            )}
-        </div>
-    );
-}
-
-function BranchRow({
-                       branch,
-                       selected,
-                       onSelect,
-                   }: {
-    branch: BranchRowData;
-    selected: boolean;
-    onSelect: () => void;
-}) {
-    return (
-        <button
-            onClick={onSelect}
-            className={`grid w-full grid-cols-[1.1fr_0.8fr_0.9fr_0.8fr_0.8fr_0.7fr] items-center border-b border-[#F5EEF6] px-3 py-3 text-left text-[11px] transition last:border-b-0 ${
-                selected ? "bg-[#FDFAF4]" : "bg-white hover:bg-[#FDFAF4]"
-            }`}
-        >
-            <div className="font-semibold text-[#1A1220]">
-                {branch.branch}
-            </div>
-
-            <div className="text-[#7A6E88]">
-                {branch.manager}
-            </div>
-
-            <div>
-                <p className="font-semibold text-[#2D1B4E]">
-                    {branch.activePackages} active
-                </p>
-                <p className="text-[9px] text-[#7A6E88]">
-                    {branch.inactivePackages} inactive
-                </p>
-            </div>
-
-            <div className="text-[#7A6E88]">
-                {branch.lastUpdated}
-            </div>
-
-            <div>
-                <StatusBadge status={branch.status} />
-            </div>
-
-            <div className="text-right text-[10px] font-semibold text-[#2D1B4E]">
-                View →
-            </div>
-        </button>
-    );
-}
-
-function PackagePreview({
-                            name,
-                            price,
-                            inclusions,
-                            status,
-                        }: {
-    name: string;
-    price: string;
-    inclusions: string;
-    status: string;
-}) {
-    return (
-        <div className="rounded-[10px] border border-[#F5EEF6] bg-[#FDFAF4] px-3 py-2.5">
-            <div className="flex items-start justify-between gap-3">
-                <div>
-                    <p className="text-[12px] font-semibold text-[#1A1220]">
-                        {name}
-                    </p>
-
-                    <p className="mt-0.5 text-[9.5px] leading-4 text-[#7A6E88]">
-                        {inclusions}
-                    </p>
-                </div>
-
-                <div className="shrink-0 text-right">
-                    <p className="text-[12px] font-semibold text-[#2D1B4E]">
-                        {price}
-                    </p>
-
-                    <StatusBadge status={status} />
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function StatusBadge({ status }: { status: string }) {
-    const ready = status === "Ready" || status === "Active";
-
-    return (
-        <span
-            className={`inline-flex rounded-[6px] px-2.5 py-1 text-[9.5px] font-semibold ${
-                ready
-                    ? "bg-[#EAF3DE] text-[#27500A]"
-                    : "bg-[#FAEEDA] text-[#633806]"
-            }`}
-        >
-            {status}
-        </span>
-    );
-}
-

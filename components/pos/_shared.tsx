@@ -1,5 +1,5 @@
 import RoleSidebar from "@/components/sidebar/RoleSidebar";
-import { RefreshCw } from "lucide-react";
+import { CalendarDays, ChevronDown, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 
 export type CartMap = { [key: string]: number };
@@ -360,11 +360,12 @@ export function StatCard({
     value: string | number;
 }) {
     return (
-        <div className="rounded-2xl border border-[#E6DDF0] bg-white px-4 py-3 shadow-sm">
-            <p className="text-[11px] font-medium tracking-[0.08em] text-[#9B8AAA]">
+        <div className="rounded-[14px] border border-[#E6DDF0] bg-white p-3 shadow-sm">
+            <p className="text-xs font-semibold text-[#2B174C]">
                 {label}
             </p>
-            <p className="mt-1 font-serif text-xl font-semibold text-[#1A1220]">
+
+            <p className="mt-1 text-[19px] font-bold leading-tight text-[#1A1220]">
                 {value}
             </p>
         </div>
@@ -388,51 +389,50 @@ export function POSLayout({
 }) {
     return (
         <div
-            className="flex min-h-screen text-[#1A1220]"
-            style={{
-                backgroundColor: "#FDFAF4",
-                fontFamily: "Georgia, 'Times New Roman', serif",
-            }}
+            className="flex min-h-screen font-sans text-[#1A1220]"
+            style={{ backgroundColor: "#FDFAF4" }}
         >
             <RoleSidebar />
 
-            <main className="min-w-0 flex-1 overflow-x-hidden">
-                <div className="sticky top-0 z-20 border-b border-[#E9E0EF] bg-[#FFFDF8]/95 backdrop-blur">
-                    <div className="flex items-center justify-between px-5 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <h1 className="font-serif text-[22px] font-semibold text-[#1A1220]">
+            <main className="min-w-0 flex-1 overflow-x-hidden font-sans">
+                <header className="sticky top-0 z-20 border-b border-[#E9E0EF] bg-[#FFFDF8]/95 backdrop-blur">
+                    <div className="flex items-center justify-between px-6 py-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <h1 className="text-[25px] font-bold text-[#1A1220]">
                                 POS / Sales
                             </h1>
 
-                            <span className="rounded-md bg-[#EFE8F8] px-3 py-1 text-xs font-medium text-[#4E2C66]">
+                            <span className="rounded-lg bg-[#EFE8F8] px-3.5 py-1.5 text-sm font-medium text-[#4E2C66]">
                                 {isOwner
                                     ? "Sales Overview"
                                     : activeBranchName || "Assigned Branch"}
                             </span>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                            <div className="rounded-lg border border-[#E6DDF0] bg-white px-4 py-2 text-xs text-[#6A5D6F] shadow-sm">
+                        <div className="flex items-center gap-2.5">
+                            <button
+                                type="button"
+                                className="inline-flex items-center gap-2 rounded-xl border border-[#E6DDF0] bg-white px-3.5 py-2.5 text-sm font-semibold text-[#2B174C] shadow-sm hover:bg-[#F7F1FF]"
+                            >
+                                <CalendarDays size={14} />
                                 {currentMonth}
-                            </div>
+                                <ChevronDown size={13} />
+                            </button>
 
                             <button
                                 onClick={() => void onRefresh()}
-                                className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#E6DDF0] bg-white text-[#5F4E75] shadow-sm hover:bg-[#F7F1FF]"
-                                title="Refresh"
+                                className="inline-flex items-center gap-2 rounded-xl bg-[#2B174C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#1B0D31]"
+                                title="Refresh sales"
                                 type="button"
                             >
-                                <RefreshCw size={15} />
+                                <RefreshCw size={14} />
+                                Refresh sales
                             </button>
-
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2B174C] text-xs font-semibold text-white shadow-sm">
-                                {isOwner ? "OW" : role === "staff" ? "ST" : "MG"}
-                            </div>
                         </div>
                     </div>
-                </div>
+                </header>
 
-                <div className="px-5 py-5">{children}</div>
+                <div className="px-6 py-4">{children}</div>
             </main>
         </div>
     );
@@ -450,31 +450,34 @@ export function OrdersTable({
     emptyText?: string;
 }) {
     return (
-        <section className="overflow-hidden rounded-2xl border border-[#E6DDF0] bg-white shadow-sm">
-            <div className="border-b border-[#E6DDF0] bg-[#FFFCF7] px-4 py-3">
-                <h3 className="font-serif text-base font-semibold text-[#1A1220]">
+        <section className="overflow-hidden rounded-[14px] border border-[#E6DDF0] bg-white shadow-sm">
+            <div className="border-b border-[#E6DDF0] bg-white px-3 py-3">
+                <h3 className="text-[16px] font-bold text-[#1A1220]">
                     {title}
                 </h3>
-                <p className="text-xs text-[#8A7A91]">{subtitle}</p>
+
+                <p className="mt-0.5 text-xs text-[#7A6A84]">
+                    {subtitle}
+                </p>
             </div>
 
             <div className="w-full min-w-0 overflow-hidden">
                 <table className="w-full table-fixed text-sm">
                     <thead>
                     <tr className="border-b border-[#E6DDF0]">
-                        <th className="px-4 py-3 text-left text-[11px] font-medium tracking-widest text-[#806A8C]">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-[#806A8C]">
                             Order ID
                         </th>
-                        <th className="px-4 py-3 text-left text-[11px] font-medium tracking-widest text-[#806A8C]">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-[#806A8C]">
                             Customer
                         </th>
-                        <th className="px-4 py-3 text-left text-[11px] font-medium tracking-widest text-[#806A8C]">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-[#806A8C]">
                             Items
                         </th>
-                        <th className="px-4 py-3 text-left text-[11px] font-medium tracking-widest text-[#806A8C]">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-[#806A8C]">
                             Total
                         </th>
-                        <th className="px-4 py-3 text-left text-[11px] font-medium tracking-widest text-[#806A8C]">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-[#806A8C]">
                             Date
                         </th>
                     </tr>
@@ -491,30 +494,29 @@ export function OrdersTable({
                             </td>
                         </tr>
                     ) : (
-                        orders.map((o) => (
+                        orders.map((order) => (
                             <tr
-                                key={o.id}
-                                className="border-b border-[#EFE7F4] last:border-0"
+                                key={order.id}
+                                className="border-b border-[#EFE7F4] last:border-0 hover:bg-[#FFFCF7]"
                             >
-                                <td className="truncate px-4 py-3 font-mono text-[11px] font-semibold text-[#5F4E75]">
-                                    {o.id}
+                                <td className="truncate px-4 py-3 text-xs font-semibold text-[#5F4E75]">
+                                    {order.id}
                                 </td>
 
-                                <td className="truncate px-4 py-3 text-[#1A1220]">
-                                    {o.customer || "Customer"}
+                                <td className="truncate px-4 py-3 text-sm font-semibold text-[#1A1220]">
+                                    {order.customer || "Customer"}
                                 </td>
 
-                                <td className="px-4 py-3 text-[#6A5D6F]">
-                                    {Array.isArray(o.items) &&
-                                    o.items.length > 0 ? (
+                                <td className="px-4 py-3 text-sm text-[#7A6A84]">
+                                    {Array.isArray(order.items) &&
+                                    order.items.length > 0 ? (
                                         <div className="space-y-1">
-                                            {o.items.map((item, idx) => (
+                                            {order.items.map((item, index) => (
                                                 <div
-                                                    key={`${item.name}-${idx}`}
+                                                    key={`${item.name}-${index}`}
                                                     className="truncate"
                                                 >
-                                                    {item.name} x
-                                                    {item.quantity}
+                                                    {item.name} × {item.quantity}
                                                 </div>
                                             ))}
                                         </div>
@@ -523,12 +525,12 @@ export function OrdersTable({
                                     )}
                                 </td>
 
-                                <td className="truncate px-4 py-3 font-semibold text-[#1A1220]">
-                                    {peso(o.total)}
+                                <td className="truncate px-4 py-3 text-sm font-bold text-[#1A1220]">
+                                    {peso(order.total)}
                                 </td>
 
-                                <td className="truncate px-4 py-3 text-[#6A5D6F]">
-                                    {o.date}
+                                <td className="truncate px-4 py-3 text-sm text-[#7A6A84]">
+                                    {order.date}
                                 </td>
                             </tr>
                         ))

@@ -18,6 +18,8 @@ type Booking = {
     name: string;
     date?: string;
     status?: string;
+    packageName?: string;
+    eventName?: string;
 };
 
 type OrderItem = {
@@ -56,6 +58,9 @@ type Product = {
     branchName?: string | null;
     branch_name?: string | null;
     name: string;
+    category?: string;
+    stock?: number;
+    alertLevel?: number;
     salesPrice?: number;
     sales_price?: number;
     sellingPrice?: number;
@@ -78,14 +83,6 @@ type BranchManager = {
     status?: string;
 };
 
-const forecastSample = [
-    { month: "Jan", height: "45%" },
-    { month: "Feb", height: "58%" },
-    { month: "Mar", height: "70%" },
-    { month: "Apr", height: "82%" },
-    { month: "May", height: "100%" },
-];
-
 function getSavedItem(key: string) {
     if (typeof window === "undefined") return "";
     return sessionStorage.getItem(key) || localStorage.getItem(key) || "";
@@ -96,6 +93,31 @@ function peso(value: number) {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
     })}`;
+}
+
+function formatDashboardDate(value?: string) {
+    if (!value) return { dateLabel: "—", timeLabel: "" };
+
+    const parsed = new Date(value);
+
+    if (Number.isNaN(parsed.getTime())) {
+        return {
+            dateLabel: value.slice(0, 10),
+            timeLabel: value.length > 10 ? value.slice(11, 16) : "",
+        };
+    }
+
+    return {
+        dateLabel: parsed.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+        }),
+        timeLabel: parsed.toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+        }),
+    };
 }
 
 function normalizeBranch(raw: any): Branch {
@@ -127,6 +149,19 @@ function normalizeBooking(raw: any): Booking {
         name: raw.name ?? raw.customer_name ?? "Unnamed Client",
         date: raw.date ?? raw.event_date ?? raw.created_at ?? "",
         status: raw.status ?? "Pending Review",
+        packageName:
+            raw.packageName ??
+            raw.package_name ??
+            raw.package ??
+            raw.package_title ??
+            raw.service_name ??
+            "",
+        eventName:
+            raw.eventName ??
+            raw.event_name ??
+            raw.event ??
+            raw.event_type ??
+            "",
     };
 }
 
@@ -194,6 +229,9 @@ function normalizeProduct(raw: any): Product {
         branchName: raw.branchName ?? raw.branch_name ?? null,
         branch_name: raw.branch_name ?? raw.branchName ?? null,
         name: raw.name ?? "",
+        category: raw.category ?? "",
+        stock: Number(raw.stock ?? 0),
+        alertLevel: Number(raw.alertLevel ?? raw.alert_level ?? 0),
         salesPrice: sellingPrice,
         sales_price: sellingPrice,
         sellingPrice: sellingPrice,
@@ -211,49 +249,6 @@ function getBranchNameFromId(branches: Branch[], branchId?: number | null) {
     return branches.find((branch) => Number(branch.id) === Number(branchId))?.branchName || "";
 }
 
-function calculateRevenueFromOrders(orders: Order[], products: Product[]) {
-    return orders.reduce((orderSum, order) => {
-        const orderRevenue = (order.items || []).reduce((itemSum, item) => {
-            const product = products.find(
-                (product) =>
-                    product.name.trim().toLowerCase() ===
-                    (item.name || "").trim().toLowerCase()
-            );
-
-            const sellingPrice = Number(
-                item.salesPrice ??
-                item.sales_price ??
-                item.sellingPrice ??
-                item.selling_price ??
-                item.price ??
-                product?.salesPrice ??
-                product?.sales_price ??
-                product?.sellingPrice ??
-                product?.selling_price ??
-                product?.price ??
-                0
-            );
-
-            const originalPrice = Number(
-                item.originalPrice ??
-                item.original_price ??
-                item.costPrice ??
-                item.cost_price ??
-                product?.originalPrice ??
-                product?.original_price ??
-                product?.costPrice ??
-                product?.cost_price ??
-                0
-            );
-
-            const quantity = Number(item.quantity || 1);
-
-            return itemSum + Math.max(sellingPrice - originalPrice, 0) * quantity;
-        }, 0);
-
-        return orderSum + orderRevenue;
-    }, 0);
-}
 
 export default function OwnerDashboard() {
     const router = useRouter();
@@ -389,7 +384,10 @@ export default function OwnerDashboard() {
         };
     }, []);
 
-    const totalRevenue = calculateRevenueFromOrders(orders, products);
+    const totalSales = orders.reduce(
+        (sum, order) => sum + Number(order.total || 0),
+        0
+    );
 
     const activeManagers =
         managers.length > 0
@@ -401,17 +399,6 @@ export default function OwnerDashboard() {
 
     const branchStats = useMemo(() => {
         return branches.map((branch) => {
-            const branchBookings = bookings.filter((booking) => {
-                const bookingBranchId = booking.branchId ?? booking.branch_id;
-                const bookingBranchName = booking.branchName ?? booking.branch_name;
-
-                return (
-                    String(bookingBranchId || "") === String(branch.id) ||
-                    String(bookingBranchName || "").toLowerCase() ===
-                    branch.branchName.toLowerCase()
-                );
-            });
-
             const branchProducts = products.filter((product) => {
                 const productBranchId = product.branchId ?? product.branch_id;
                 const productBranchName = product.branchName ?? product.branch_name;
@@ -447,37 +434,113 @@ export default function OwnerDashboard() {
                 );
             });
 
-            const revenue = calculateRevenueFromOrders(branchOrders, branchProducts);
-
             return {
                 branch,
-                bookings: branchBookings.length,
-                orders: branchOrders.length,
-                revenue,
+                revenue: branchOrders.reduce(
+                    (sum, order) => sum + Number(order.total || 0),
+                    0
+                ),
             };
         });
     }, [branches, bookings, orders, products]);
 
-    const topRevenueBranch =
-        branchStats.length > 0
-            ? [...branchStats].sort((a, b) => b.revenue - a.revenue)[0]
-            : null;
-
-    const mostBookingsBranch =
-        branchStats.length > 0
-            ? [...branchStats].sort((a, b) => b.bookings - a.bookings)[0]
-            : null;
-
-    const pendingSetupCount = Math.max(
-        branches.filter((branch) => !branch.managerName).length,
-        0
+    const topPerformingBranches = useMemo(
+        () =>
+            [...branchStats]
+                .sort((first, second) => second.revenue - first.revenue)
+                .slice(0, 3),
+        [branchStats]
     );
 
-    const recentBookings = bookings.slice(0, 3);
+    const popularItems = useMemo(() => {
+        const itemMap = orders.reduce<
+            Record<string, { name: string; quantity: number }>
+        >((accumulator, order) => {
+            (order.items || []).forEach((item) => {
+                const name = item.name?.trim() || "Unnamed item";
+
+                if (!accumulator[name]) {
+                    accumulator[name] = { name, quantity: 0 };
+                }
+
+                accumulator[name].quantity += Number(item.quantity || 0);
+            });
+
+            return accumulator;
+        }, {});
+
+        return Object.values(itemMap)
+            .sort((first, second) => second.quantity - first.quantity)
+            .slice(0, 3);
+    }, [orders]);
+
+    const mostBookedPackages = useMemo(() => {
+        const packageMap = bookings.reduce<
+            Record<string, { name: string; quantity: number }>
+        >((accumulator, booking) => {
+            const packageName = booking.packageName?.trim() || "Package booking";
+
+            if (!accumulator[packageName]) {
+                accumulator[packageName] = { name: packageName, quantity: 0 };
+            }
+
+            accumulator[packageName].quantity += 1;
+            return accumulator;
+        }, {});
+
+        return Object.values(packageMap)
+            .sort((first, second) => second.quantity - first.quantity)
+            .slice(0, 3);
+    }, [bookings]);
+
+    const maxBranchRevenue = Math.max(
+        ...topPerformingBranches.map((item) => item.revenue),
+        1
+    );
+    const maxPopularQuantity = Math.max(
+        ...popularItems.map((item) => item.quantity),
+        1
+    );
+    const maxPackageBookings = Math.max(
+        ...mostBookedPackages.map((item) => item.quantity),
+        1
+    );
+
+    const recentBookings = useMemo(
+        () =>
+            [...bookings]
+                .sort(
+                    (first, second) =>
+                        new Date(second.date || 0).getTime() -
+                        new Date(first.date || 0).getTime()
+                )
+                .slice(0, 5),
+        [bookings]
+    );
+
+    const inventoryAlerts = useMemo(
+        () =>
+            products
+                .filter(
+                    (product) =>
+                        Number(product.stock || 0) <=
+                        Number(product.alertLevel || 0)
+                )
+                .sort(
+                    (first, second) =>
+                        Number(first.stock || 0) - Number(second.stock || 0)
+                )
+                .slice(0, 5),
+        [products]
+    );
+
+    // Keep the existing manager loading behavior available without displaying
+    // an extra owner-dashboard card that is not present in the reference layout.
+    void activeManagers;
 
     return (
         <>
-            <div className="flex h-[54px] items-center justify-between border-b border-[#EBE4F0] bg-white px-5">
+            <div className="flex h-[54px] items-center justify-between border-b border-[#EBE4F0] bg-[#FDFAF4] px-5 font-sans">
                 <div className="flex items-center gap-3">
                     <h1 className="text-[18px] font-medium text-[#1A1220]">
                         Dashboard
@@ -506,215 +569,280 @@ export default function OwnerDashboard() {
                 </div>
             </div>
 
-            <section className="p-5">
-                <div className="space-y-3">
-                    <div className="grid grid-cols-4 gap-3">
-                        <StatCard
-                            active
-                            title="Total revenue"
-                            value={peso(totalRevenue)}
-                            note="Across all branches"
-                            iconType="hero"
-                        />
-
-                        <StatCard
-                            title="Total bookings"
-                            value={String(bookings.length)}
-                            note="Across all branches"
-                            iconType="plum"
-                        />
-
-                        <StatCard
-                            title="Total branches"
+            <section className="p-5 font-sans">
+                <div className="mx-auto max-w-[1500px] space-y-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <OwnerStatCard
+                            title="Total Branches"
                             value={String(branches.length)}
-                            note={`${pendingSetupCount} pending setup`}
-                            iconType="gold"
+                            note="Active branches"
                         />
-
-                        <StatCard
-                            title="Active managers"
-                            value={String(activeManagers)}
-                            note="Across active branches"
-                            iconType="plum"
+                        <OwnerStatCard
+                            title="Total Sales"
+                            value={peso(totalSales)}
+                            note="All branches revenue"
+                        />
+                        <OwnerStatCard
+                            title="Total Booking"
+                            value={String(bookings.length)}
+                            note="System-wide"
+                        />
+                        <OwnerStatCard
+                            title="Total Products"
+                            value={String(products.length)}
+                            note="Combined inventory"
                         />
                     </div>
 
-                    <div className="grid grid-cols-5 gap-3">
-                        <Card className="col-span-3 min-h-[132px]">
-                            <CardHeader
-                                title="Branch Summary"
-                                action="View branches →"
-                                onAction={() => router.push("/branches")}
-                            />
+                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+                        <OwnerDashboardCard className="min-h-[255px]">
+                            <OwnerCardHeader title="Top Performing Branch Based on Sales" />
 
-                            <div className="space-y-3">
-                                <BranchLine
-                                    label="Top revenue"
-                                    value={topRevenueBranch?.branch.branchName || "No data yet"}
-                                    detail={
-                                        topRevenueBranch
-                                            ? `${peso(topRevenueBranch.revenue)} this month`
-                                            : "No sales yet"
-                                    }
-                                    color="#2D1B4E"
-                                />
-
-                                <BranchLine
-                                    label="Most bookings"
-                                    value={mostBookingsBranch?.branch.branchName || "No data yet"}
-                                    detail={
-                                        mostBookingsBranch
-                                            ? `${mostBookingsBranch.bookings} bookings`
-                                            : "No bookings yet"
-                                    }
-                                    color="#C9951A"
-                                />
-
-                                <BranchLine
-                                    label="Needs attention"
-                                    value={
-                                        pendingSetupCount > 0
-                                            ? `${pendingSetupCount} branch setup pending`
-                                            : "All branches set"
-                                    }
-                                    detail={
-                                        pendingSetupCount > 0
-                                            ? "Complete manager setup"
-                                            : "No pending setup"
-                                    }
-                                    color="#F28B73"
-                                />
-                            </div>
-                        </Card>
-
-                        <Card className="col-span-2 min-h-[210px] overflow-hidden">
-                            <CardHeader
-                                title="Monthly trend"
-                                action="View Forecasting →"
-                                onAction={() => router.push("/forecasting")}
-                            />
-
-                            <div className="flex h-[150px] flex-col justify-between overflow-hidden">
-                                <div>
-                                    <div className="mb-2 flex h-[82px] items-end gap-2">
-                                        {forecastSample.map((item, index) => (
-                                            <div
-                                                key={item.month}
-                                                className={`flex-1 rounded-t-[4px] ${
-                                                    index === forecastSample.length - 1
-                                                        ? "bg-[#2D1B4E]"
-                                                        : "bg-[#E9E1F3]"
-                                                }`}
-                                                style={{ height: item.height }}
-                                            />
-                                        ))}
-                                    </div>
-
-                                    <div className="flex gap-2">
-                                        {forecastSample.map((item, index) => (
-                                            <div
-                                                key={item.month}
-                                                className={`flex-1 text-center text-[9px] font-semibold ${
-                                                    index === forecastSample.length - 1
-                                                        ? "text-[#2D1B4E]"
-                                                        : "text-[#7A6E88]"
-                                                }`}
-                                            >
-                                                {item.month}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="border-t border-[#F5EEF6] pt-2">
-                                    <div className="flex items-end justify-between gap-2">
-                                        <div>
-                                            <p className="text-[14px] font-semibold leading-none text-[#1A1220]">
-                                                ₱185,500
-                                            </p>
-
-                                            <p className="mt-1 text-[9.5px] font-medium text-[#27500A]">
-                                                ↑ 11% from last month
-                                            </p>
-                                        </div>
-
-                                        <span className="shrink-0 rounded-full bg-[#FFF8E8] px-2 py-1 text-[9px] font-semibold text-[#8A5A00]">
-                                            Sample
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <Card className="min-h-[160px]">
-                            <CardHeader
-                                title="Recent bookings"
-                                action="View all →"
-                                onAction={() => router.push("/bookings")}
-                            />
-
-                            {recentBookings.length === 0 ? (
-                                <div className="flex min-h-[96px] items-center justify-center rounded-[9px] bg-[#FDFAF4] px-4 py-4 text-center">
-                                    <div>
-                                        <p className="text-[11px] font-semibold text-[#1A1220]">
-                                            No recent bookings yet.
-                                        </p>
-
-                                        <p className="mt-1 text-[10px] leading-4 text-[#7A6E88]">
-                                            New bookings will appear here once customers start reserving packages.
-                                        </p>
-                                    </div>
-                                </div>
+                            {topPerformingBranches.length === 0 ? (
+                                <OwnerEmptyState text="No branch sales data yet." />
                             ) : (
-                                <div className="space-y-2">
-                                    {recentBookings.map((booking) => (
-                                        <BookingPreview
-                                            key={booking.id}
-                                            name={booking.name}
-                                            branch={
-                                                booking.branchName ||
-                                                booking.branch_name ||
-                                                getBranchNameFromId(
-                                                    branches,
-                                                    booking.branchId ?? booking.branch_id
-                                                ) ||
-                                                "Branch"
+                                <div className="space-y-4 pt-1">
+                                    {topPerformingBranches.map((item, index) => (
+                                        <OwnerRankedProgress
+                                            key={item.branch.id}
+                                            rank={index + 1}
+                                            label={item.branch.branchName}
+                                            value={peso(item.revenue)}
+                                            percent={
+                                                (item.revenue / maxBranchRevenue) * 100
                                             }
-                                            date={booking.date || "No date"}
-                                            status={booking.status || "Pending Review"}
                                         />
                                     ))}
                                 </div>
                             )}
-                        </Card>
 
-                        <Card className="min-h-[160px]">
-                            <CardHeader title="Quick Actions" />
+                            <OwnerCardLegend text="Sales by branch" />
+                        </OwnerDashboardCard>
 
-                            <div className="space-y-2">
-                                <ActionButton
-                                    label="+ Add branch"
-                                    onClick={() => router.push("/branches/add-branches")}
-                                />
+                        <OwnerDashboardCard className="min-h-[255px]">
+                            <OwnerCardHeader
+                                title="Popular Items"
+                                action="View all"
+                                onAction={() => router.push("/analytics")}
+                            />
 
-                                <ActionButton
-                                    label="View branches"
-                                    onClick={() => router.push("/branches")}
-                                />
+                            {popularItems.length === 0 ? (
+                                <OwnerEmptyState text="No popular item data yet." />
+                            ) : (
+                                <div className="space-y-4 pt-1">
+                                    {popularItems.map((item, index) => (
+                                        <OwnerRankedProgress
+                                            key={item.name}
+                                            rank={index + 1}
+                                            label={item.name}
+                                            value={`${item.quantity} sold`}
+                                            percent={
+                                                (item.quantity / maxPopularQuantity) * 100
+                                            }
+                                        />
+                                    ))}
+                                </div>
+                            )}
 
-                                <ActionButton
-                                    label="View branch managers"
-                                    onClick={() => router.push("/branch-managers")}
-                                />
+                            <OwnerCardLegend text="Units sold system-wide" />
+                        </OwnerDashboardCard>
 
-                                <ActionButton
-                                    label="View reports"
-                                    onClick={() => router.push("/reports")}
+                        <OwnerDashboardCard className="min-h-[255px]">
+                            <OwnerCardHeader
+                                title="Most Booked Packages"
+                                action="View all"
+                                onAction={() => router.push("/analytics")}
+                            />
+
+                            {mostBookedPackages.length === 0 ? (
+                                <OwnerEmptyState text="No package bookings yet." />
+                            ) : (
+                                <div className="space-y-4 pt-1">
+                                    {mostBookedPackages.map((item, index) => (
+                                        <OwnerRankedProgress
+                                            key={item.name}
+                                            rank={index + 1}
+                                            label={item.name}
+                                            value={`${item.quantity} booking${
+                                                item.quantity === 1 ? "" : "s"
+                                            }`}
+                                            percent={
+                                                (item.quantity / maxPackageBookings) * 100
+                                            }
+                                        />
+                                    ))}
+                                </div>
+                            )}
+
+                            <OwnerCardLegend text="Bookings system-wide" />
+                        </OwnerDashboardCard>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        <OwnerDashboardCard className="overflow-hidden !p-0 shadow-[0_8px_22px_rgba(45,27,78,0.06)]">
+                            <div className="border-b border-[#F0ECF5] px-4 py-3.5">
+                                <OwnerTableCardHeader
+                                    title="Recent Bookings"
+                                    subtitle="Latest reservations across all branches"
+                                    count={recentBookings.length}
+                                    countLabel="bookings"
+                                    action="View all bookings"
+                                    onAction={() => router.push("/bookings")}
+                                    tone="violet"
                                 />
                             </div>
-                        </Card>
+
+                            {recentBookings.length === 0 ? (
+                                <div className="px-4 py-4">
+                                    <OwnerEmptyState text="No recent bookings yet." />
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="overflow-hidden">
+                                        <table className="w-full table-fixed border-collapse">
+                                            <colgroup>
+                                                <col className="w-[31%]" />
+                                                <col className="w-[18%]" />
+                                                <col className="w-[18%]" />
+                                                <col className="w-[20%]" />
+                                                <col className="w-[13%]" />
+                                            </colgroup>
+                                            <thead>
+                                            <tr className="border-b border-[#F1EDF5] bg-[#FBFAFD]">
+                                                <th className="px-3 py-2.5 text-left text-[8px] font-semibold uppercase tracking-[0.07em] text-[#776E84]">
+                                                    Customer / Event
+                                                </th>
+                                                <th className="px-2 py-2.5 text-left text-[8px] font-semibold uppercase tracking-[0.07em] text-[#776E84]">
+                                                    Branch
+                                                </th>
+                                                <th className="px-2 py-2.5 text-left text-[8px] font-semibold uppercase tracking-[0.07em] text-[#776E84]">
+                                                    Schedule
+                                                </th>
+                                                <th className="px-2 py-2.5 text-left text-[8px] font-semibold uppercase tracking-[0.07em] text-[#776E84]">
+                                                    Package
+                                                </th>
+                                                <th className="px-3 py-2.5 text-left text-[8px] font-semibold uppercase tracking-[0.07em] text-[#776E84]">
+                                                    Status
+                                                </th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            {recentBookings.map((booking) => (
+                                                <OwnerBookingTableRow
+                                                    key={booking.id}
+                                                    booking={booking}
+                                                    branchName={
+                                                        booking.branchName ||
+                                                        booking.branch_name ||
+                                                        getBranchNameFromId(
+                                                            branches,
+                                                            booking.branchId ??
+                                                            booking.branch_id
+                                                        ) ||
+                                                        "Branch"
+                                                    }
+                                                />
+                                            ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div className="flex items-center justify-center border-t border-[#F0ECF5] bg-[#FCFBFE] py-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => router.push("/bookings")}
+                                            className="text-[10px] font-semibold text-[#3B1B88] transition hover:text-[#5B2FC6]"
+                                        >
+                                            View all bookings →
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </OwnerDashboardCard>
+
+                        <OwnerDashboardCard className="overflow-hidden !p-0 shadow-[0_8px_22px_rgba(45,27,78,0.06)]">
+                            <div className="border-b border-[#F0ECF5] px-4 py-3.5">
+                                <OwnerTableCardHeader
+                                    title="Inventory Alerts"
+                                    subtitle="Products that need attention or restocking"
+                                    count={inventoryAlerts.length}
+                                    countLabel="alerts"
+                                    action="View all inventory"
+                                    onAction={() => router.push("/inventory")}
+                                    tone="red"
+                                />
+                            </div>
+
+                            {inventoryAlerts.length === 0 ? (
+                                <div className="px-4 py-4">
+                                    <OwnerEmptyState text="All products are well stocked." />
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="overflow-hidden">
+                                        <table className="w-full table-fixed border-collapse">
+                                            <colgroup>
+                                                <col className="w-[29%]" />
+                                                <col className="w-[19%]" />
+                                                <col className="w-[20%]" />
+                                                <col className="w-[17%]" />
+                                                <col className="w-[15%]" />
+                                            </colgroup>
+                                            <thead>
+                                            <tr className="border-b border-[#F1EDF5] bg-[#FBFAFD]">
+                                                <th className="px-3 py-2.5 text-left text-[8px] font-semibold uppercase tracking-[0.07em] text-[#776E84]">
+                                                    Product
+                                                </th>
+                                                <th className="px-2 py-2.5 text-left text-[8px] font-semibold uppercase tracking-[0.07em] text-[#776E84]">
+                                                    Branch
+                                                </th>
+                                                <th className="px-2 py-2.5 text-left text-[8px] font-semibold uppercase tracking-[0.07em] text-[#776E84]">
+                                                    Category
+                                                </th>
+                                                <th className="px-2 py-2.5 text-left text-[8px] font-semibold uppercase tracking-[0.07em] text-[#776E84]">
+                                                    Stock Level
+                                                </th>
+                                                <th className="px-3 py-2.5 text-right text-[8px] font-semibold uppercase tracking-[0.07em] text-[#776E84]">
+                                                    Action
+                                                </th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            {inventoryAlerts.map((product) => (
+                                                <OwnerInventoryAlertRow
+                                                    key={product.id}
+                                                    product={product}
+                                                    branchName={
+                                                        product.branchName ||
+                                                        product.branch_name ||
+                                                        getBranchNameFromId(
+                                                            branches,
+                                                            product.branchId ??
+                                                            product.branch_id
+                                                        ) ||
+                                                        "Branch"
+                                                    }
+                                                    onRestock={() =>
+                                                        router.push("/inventory")
+                                                    }
+                                                />
+                                            ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div className="flex items-center justify-center border-t border-[#F0ECF5] bg-[#FCFBFE] py-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => router.push("/inventory")}
+                                            className="text-[10px] font-semibold text-[#3B1B88] transition hover:text-[#5B2FC6]"
+                                        >
+                                            View all alerts →
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </OwnerDashboardCard>
                     </div>
                 </div>
             </section>
@@ -722,41 +850,66 @@ export default function OwnerDashboard() {
     );
 }
 
-function Card({
-                  children,
-                  className = "",
-              }: {
+function OwnerDashboardCard({
+                                children,
+                                className = "",
+                            }: {
     children: React.ReactNode;
     className?: string;
 }) {
     return (
         <div
-            className={`rounded-[12px] border border-[#EBE4F0] bg-white p-3.5 ${className}`}
+            className={`rounded-[14px] border border-[#EBE4F0] bg-white p-4 shadow-sm ${className}`}
         >
             {children}
         </div>
     );
 }
 
-function CardHeader({
-                        title,
-                        action,
-                        onAction,
-                    }: {
+function OwnerStatCard({
+                           title,
+                           value,
+                           note,
+                       }: {
+    title: string;
+    value: string;
+    note: string;
+}) {
+    return (
+        <div className="h-[118px] rounded-[14px] border border-[#EBE4F0] bg-white p-4 shadow-sm">
+            <p className="text-[12px] font-semibold text-[#1A1220]">
+                {title}
+            </p>
+            <p className="mt-2 text-[27px] font-bold leading-none tracking-[-0.03em] text-[#1A1220]">
+                {value}
+            </p>
+            <p className="mt-2 text-[11px] font-medium text-[#5B5273]">
+                {note}
+            </p>
+        </div>
+    );
+}
+
+function OwnerCardHeader({
+                             title,
+                             action,
+                             onAction,
+                         }: {
     title: string;
     action?: string;
     onAction?: () => void;
 }) {
     return (
-        <div className="mb-3 flex items-center justify-between gap-4">
-            <h2 className="whitespace-nowrap text-[14px] font-medium leading-none text-[#1A1220]">
+        <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="min-w-0 truncate text-[15px] font-semibold text-[#1A1220]">
                 {title}
             </h2>
 
-            {action && (
+            {action && onAction && (
                 <button
+                    type="button"
                     onClick={onAction}
-                    className="shrink-0 whitespace-nowrap text-[8.5px] font-semibold leading-none text-[#2D1B4E] hover:underline"
+                    className="shrink-0 bg-transparent px-1 py-1 text-[10px] font-semibold text-[#2D1B4E] transition hover:text-[#5B2FC6]"
                 >
                     {action}
                 </button>
@@ -765,99 +918,105 @@ function CardHeader({
     );
 }
 
-function StatCard({
-                      title,
-                      value,
-                      note,
-                      iconType,
-                      active = false,
-                  }: {
+function OwnerTableCardHeader({
+                                  title,
+                                  subtitle,
+                                  count,
+                                  countLabel,
+                                  action,
+                                  onAction,
+                                  tone,
+                              }: {
     title: string;
-    value: string;
-    note: string;
-    iconType: "hero" | "plum" | "gold";
-    active?: boolean;
+    subtitle: string;
+    count: number;
+    countLabel: string;
+    action: string;
+    onAction: () => void;
+    tone: "violet" | "red";
 }) {
-    const iconClass =
-        iconType === "hero"
-            ? "bg-[#5A4674]"
-            : iconType === "gold"
-                ? "border border-[#E1B13D] bg-[#FFF8E8]"
-                : "bg-[#E9E1F3]";
+    const accentClass =
+        tone === "red"
+            ? "bg-[#FFE8E8] text-[#B42318]"
+            : "bg-[#F0EBFF] text-[#4B21BD]";
 
     return (
-        <div
-            className={`h-[120px] rounded-[10px] border p-2.5 ${
-                active
-                    ? "border-[#2D1B4E] bg-[#2D1B4E] text-white"
-                    : "border-[#EBE4F0] bg-white text-[#1A1220]"
-            }`}
-        >
-            <div className={`mb-2 h-[28px] w-[28px] rounded-[7px] ${iconClass}`} />
+        <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+                <div
+                    className={`mb-2 h-1 w-8 rounded-full ${
+                        tone === "red" ? "bg-[#DC2626]" : "bg-[#4B21BD]"
+                    }`}
+                />
+                <h2 className="truncate text-[15px] font-semibold text-[#1A1220]">
+                    {title}
+                </h2>
+                <p className="mt-1 truncate text-[10px] text-[#776E84]">
+                    {subtitle}
+                </p>
+            </div>
 
-            <p
-                className={`text-[10px] font-medium leading-[1.15] ${
-                    active ? "text-white/75" : "text-[#7A6E88]"
-                }`}
-            >
-                {title}
-            </p>
-
-            <p className="mt-1 text-[18px] font-medium leading-none tracking-[-0.01em]">
-                {value}
-            </p>
-
-            <p
-                className={`mt-1.5 text-[10px] font-medium leading-[1.25] ${
-                    active ? "text-white/80" : "text-[#27500A]"
-                }`}
-            >
-                {note}
-            </p>
+            <div className="flex shrink-0 items-center gap-3 pt-1">
+                <span
+                    className={`rounded-full px-2.5 py-1 text-[9px] font-semibold ${accentClass}`}
+                >
+                    {count} {countLabel}
+                </span>
+                <button
+                    type="button"
+                    onClick={onAction}
+                    className="text-[10px] font-semibold text-[#3B1B88] transition hover:text-[#5B2FC6]"
+                >
+                    {action} →
+                </button>
+            </div>
         </div>
     );
 }
 
-function BranchLine({
-                        label,
-                        value,
-                        detail,
-                        color,
-                    }: {
+function OwnerRankedProgress({
+                                 rank,
+                                 label,
+                                 value,
+                                 percent,
+                             }: {
+    rank: number;
     label: string;
     value: string;
-    detail: string;
-    color: string;
+    percent: number;
 }) {
+    const rankClass =
+        rank === 1
+            ? "bg-[#EEE8F8] text-[#3B1B88]"
+            : rank === 2
+                ? "bg-[#FFF4D8] text-[#9A5A00]"
+                : "bg-[#E8F0FF] text-[#1D4ED8]";
+
+    const barColor =
+        rank === 1 ? "#3B1B88" : rank === 2 ? "#D97706" : "#2563EB";
+
     return (
         <div>
-            <div className="mb-1 flex items-center justify-between gap-3">
-                <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-[0.13em] text-[#7A6E88]">
-                        {label}
-                    </p>
-
-                    <p className="mt-0.5 text-[11.5px] font-semibold text-[#1A1220]">
-                        {value}
-                    </p>
-                </div>
-
-                <p className="shrink-0 text-right text-[10px] text-[#7A6E88]">
-                    {detail}
+            <div className="mb-1.5 flex items-center gap-2.5">
+                <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${rankClass}`}
+                >
+                    {rank}
+                </span>
+                <p className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[#1A1220]">
+                    {label}
+                </p>
+                <p className="shrink-0 text-[10px] font-semibold text-[#1A1220]">
+                    {value}
                 </p>
             </div>
 
-            <div className="h-1.5 rounded-full bg-[#EDE6F3]">
+            <div className="ml-[34px] h-1.5 overflow-hidden rounded-full bg-[#EEE8F8]">
                 <div
-                    className="h-1.5 rounded-full"
+                    className="h-full rounded-full"
                     style={{
-                        width:
-                            label === "Top revenue"
-                                ? "75%"
-                                : label === "Most bookings"
-                                    ? "65%"
-                                    : "35%",
-                        backgroundColor: color,
+                        width: `${Math.max(Math.min(percent, 100), 8)}%`,
+                        backgroundColor: barColor,
                     }}
                 />
             </div>
@@ -865,58 +1024,172 @@ function BranchLine({
     );
 }
 
-function BookingPreview({
-                            name,
-                            branch,
-                            date,
-                            status,
-                        }: {
-    name: string;
-    branch: string;
-    date: string;
-    status: string;
-}) {
-    const statusClass =
-        status === "Confirmed"
-            ? "bg-[#EAF6E8] text-[#1F7A35]"
-            : status === "Preparing"
-                ? "bg-[#EFE7FF] text-[#4E2C85]"
-                : "bg-[#FFF2D8] text-[#9A6500]";
-
+function OwnerCardLegend({ text }: { text: string }) {
     return (
-        <div className="flex items-center justify-between border-b border-[#F5EEF6] pb-2 last:border-b-0 last:pb-0">
-            <div className="min-w-0">
-                <p className="truncate text-[11px] font-semibold text-[#1A1220]">
-                    {name}
-                </p>
-                <p className="truncate text-[10px] text-[#7A6E88]">
-                    {branch} · {date}
-                </p>
-            </div>
-
-            <span
-                className={`ml-2 shrink-0 rounded-[6px] px-2 py-1 text-[9px] font-medium ${statusClass}`}
-            >
-                {status}
-            </span>
+        <div className="mt-5 text-center text-[10px] font-medium text-[#5B5273]">
+            {text}
         </div>
     );
 }
 
-function ActionButton({
-                          label,
-                          onClick,
-                      }: {
-    label: string;
-    onClick: () => void;
+function OwnerBookingTableRow({
+                                  booking,
+                                  branchName,
+                              }: {
+    booking: Booking;
+    branchName: string;
 }) {
+    const { dateLabel, timeLabel } = formatDashboardDate(booking.date);
+    const status = booking.status || "Pending Review";
+    const normalizedStatus = status.trim().toLowerCase();
+
+    const statusClass =
+        normalizedStatus === "completed"
+            ? "bg-[#E6F6EA] text-[#226B36]"
+            : normalizedStatus === "confirmed"
+                ? "bg-[#E8F0FF] text-[#1D4ED8]"
+                : normalizedStatus === "preparing"
+                    ? "bg-[#EFE7FF] text-[#5B2FC6]"
+                    : normalizedStatus === "cancelled" ||
+                    normalizedStatus === "canceled"
+                        ? "bg-[#FFE5E5] text-[#9A2424]"
+                        : "bg-[#FFF4D8] text-[#8A5A00]";
+
     return (
-        <button
-            onClick={onClick}
-            className="w-full rounded-[8px] border border-[#EBE4F0] bg-[#FDFAF4] px-3 py-2 text-left text-[10.5px] font-semibold leading-4 text-[#2D1B4E] transition hover:bg-[#EEE8F8]"
-        >
-            {label}
-        </button>
+        <tr className="border-b border-[#F3EFF6] transition hover:bg-[#FCFAFF] last:border-b-0">
+            <td className="px-3 py-3">
+                <p
+                    title={booking.name}
+                    className="truncate text-[10px] font-semibold text-[#1A1220]"
+                >
+                    {booking.name}
+                </p>
+                <p
+                    title={booking.eventName || "Booking reservation"}
+                    className="mt-1 truncate text-[9px] text-[#665D79]"
+                >
+                    {booking.eventName || "Booking reservation"}
+                </p>
+            </td>
+
+            <td className="px-2 py-3">
+                <p
+                    title={branchName}
+                    className="truncate text-[9px] font-semibold text-[#3B1B88]"
+                >
+                    {branchName}
+                </p>
+            </td>
+
+            <td className="px-2 py-3">
+                <p className="truncate text-[9px] font-semibold text-[#1A1220]">
+                    {dateLabel}
+                </p>
+                {timeLabel && (
+                    <p className="mt-1 text-[8px] text-[#776E84]">
+                        {timeLabel}
+                    </p>
+                )}
+            </td>
+
+            <td className="px-2 py-3">
+                <p
+                    title={booking.packageName || "Package booking"}
+                    className="truncate text-[9px] font-medium text-[#1A1220]"
+                >
+                    {booking.packageName || "Package booking"}
+                </p>
+            </td>
+
+            <td className="px-3 py-3">
+                <span
+                    className={`inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-[8px] font-semibold ${statusClass}`}
+                >
+                    {normalizedStatus === "pending review" ? "Pending" : status}
+                </span>
+            </td>
+        </tr>
+    );
+}
+
+function OwnerInventoryAlertRow({
+                                    product,
+                                    branchName,
+                                    onRestock,
+                                }: {
+    product: Product;
+    branchName: string;
+    onRestock: () => void;
+}) {
+    const unitsLeft = Number(product.stock || 0);
+    const isOutOfStock = unitsLeft <= 0;
+
+    return (
+        <tr className="border-b border-[#F3EFF6] transition hover:bg-[#FFFCFC] last:border-b-0">
+            <td className="px-3 py-3">
+                <p
+                    title={product.name}
+                    className="truncate text-[10px] font-semibold text-[#1A1220]"
+                >
+                    {product.name}
+                </p>
+                <p
+                    className={`mt-1 text-[8px] font-semibold ${
+                        isOutOfStock ? "text-[#B42318]" : "text-[#B45309]"
+                    }`}
+                >
+                    {isOutOfStock ? "Out of stock" : "Low stock"}
+                </p>
+            </td>
+
+            <td className="px-2 py-3">
+                <p
+                    title={branchName}
+                    className="truncate text-[9px] font-semibold text-[#3B1B88]"
+                >
+                    {branchName}
+                </p>
+            </td>
+
+            <td className="px-2 py-3">
+                <p
+                    title={product.category || "Uncategorized"}
+                    className="truncate text-[9px] text-[#4C4556]"
+                >
+                    {product.category || "Uncategorized"}
+                </p>
+            </td>
+
+            <td className="px-2 py-3">
+                <span
+                    className={`inline-flex whitespace-nowrap rounded-full px-2 py-1 text-[9px] font-semibold ${
+                        isOutOfStock
+                            ? "bg-[#FFE8E8] text-[#B42318]"
+                            : "bg-[#FFF4D8] text-[#9A5A00]"
+                    }`}
+                >
+                    {unitsLeft} left
+                </span>
+            </td>
+
+            <td className="px-3 py-3 text-right">
+                <button
+                    type="button"
+                    onClick={onRestock}
+                    className="whitespace-nowrap rounded-lg bg-[#F2EDFF] px-2.5 py-1.5 text-[9px] font-semibold text-[#3B1B88] transition hover:bg-[#E6DDFF]"
+                >
+                    Restock
+                </button>
+            </td>
+        </tr>
+    );
+}
+
+function OwnerEmptyState({ text }: { text: string }) {
+    return (
+        <div className="flex min-h-[150px] items-center justify-center rounded-xl border border-dashed border-[#E6DDF0] bg-[#FCFBFE] px-5 text-center">
+            <p className="text-[11px] text-[#665D79]">{text}</p>
+        </div>
     );
 }
 

@@ -20,11 +20,8 @@ export default function PackagesPage() {
 
     return (
         <div
-            style={{
-                backgroundColor: "#FDFAF4",
-                fontFamily: "Georgia, 'Times New Roman', serif",
-            }}
-            className="flex min-h-screen text-[#1A1220]"
+            className="flex min-h-screen font-sans text-[#1A1220]"
+            style={{ backgroundColor: "#FDFAF4" }}
         >
             <RoleSidebar />
 

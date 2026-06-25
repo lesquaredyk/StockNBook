@@ -25,16 +25,16 @@ export function BranchPOSView({ pos }: { pos: UsePOSReturn }) {
             currentMonth={pos.currentMonth}
             onRefresh={() => window.location.reload()}
         >
-            <div className="mb-5 grid gap-4 md:grid-cols-3">
+            <div className="mb-3 grid gap-3 md:grid-cols-3">
                 <StatCard label="Today's Sales" value={peso(pos.todayRevenue)} />
                 <StatCard label="Orders Today" value={pos.todayOrders.length} />
                 <StatCard label="Today's Profit" value={peso(pos.todayProfit)} />
             </div>
 
-            <div className="space-y-5">
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
-                    <section className="min-w-0 rounded-[22px] border border-[#E6DDF0] bg-white p-5 shadow-sm">
-                        <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_220px]">
+            <div className="space-y-3">
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_400px]">
+                    <section className="min-w-0 rounded-[14px] border border-[#E6DDF0] bg-white p-3 shadow-sm">
+                        <div className="mb-3 grid gap-3 lg:grid-cols-[1fr_220px]">
                             <div className="relative">
                                 <Search
                                     size={16}
@@ -45,14 +45,14 @@ export function BranchPOSView({ pos }: { pos: UsePOSReturn }) {
                                     value={pos.search}
                                     onChange={(e) => pos.setSearch(e.target.value)}
                                     placeholder="Search items or variants..."
-                                    className="h-12 w-full rounded-xl border border-[#E3D8EA] bg-white px-4 pl-11 text-sm text-[#1A1220] outline-none placeholder:text-[#9B8AAA] focus:border-[#2B174C]"
+                                    className="w-full rounded-xl border border-[#E3D8EA] bg-white px-4 py-2.5 pl-10 text-sm text-[#1A1220] outline-none shadow-sm placeholder:text-[#9B8AAA] focus:border-[#2B174C]"
                                 />
                             </div>
 
                             <select
                                 value={pos.categoryFilter}
                                 onChange={(e) => pos.setCategoryFilter(e.target.value)}
-                                className="h-12 rounded-xl border border-[#E3D8EA] bg-white px-4 text-sm font-semibold text-[#1A1220] outline-none focus:border-[#2B174C]"
+                                className="rounded-xl border border-[#E3D8EA] bg-white px-4 py-2.5 text-sm font-semibold text-[#1A1220] outline-none shadow-sm focus:border-[#2B174C]"
                             >
                                 {pos.categories.map((c) => (
                                     <option key={c} value={c}>
@@ -133,7 +133,7 @@ function POSProductTable({ pos }: { pos: UsePOSReturn }) {
                     <Minus size={13} />
                 </button>
 
-                <span className="min-w-6 text-center font-serif text-sm font-semibold text-[#1A1220]">
+                <span className="min-w-6 text-center text-sm font-semibold text-[#1A1220]">
                     {qty}
                 </span>
 
@@ -161,206 +161,206 @@ function POSProductTable({ pos }: { pos: UsePOSReturn }) {
     }
 
     return (
-        <div className="overflow-hidden rounded-xl border border-[#E6DDF0] bg-white">
+        <div className="overflow-hidden rounded-[14px] border border-[#E6DDF0] bg-white">
             <div className="w-full min-w-0">
                 <div
-                    className={`${productGridClass} border-b border-[#E6DDF0] bg-[#FFFCF7] px-5 py-3 text-[11px] font-semibold tracking-[0.08em] text-[#3D2B76]`}
+                    className={`${productGridClass} border-b border-[#E6DDF0] bg-white px-5 py-3 text-xs font-semibold text-[#806A8C]`}
                 >
-                        <div className="text-left">Product</div>
-                        <div className="text-center">Category</div>
-                        <div className="text-center">Stock</div>
-                        <div className="text-center">Price</div>
-                        <div className="text-center">Qty / Action</div>
-                    </div>
+                    <div className="text-left">Product</div>
+                    <div className="text-center">Category</div>
+                    <div className="text-center">Stock</div>
+                    <div className="text-center">Price</div>
+                    <div className="text-center">Qty / Action</div>
+                </div>
 
-                    <div className="max-h-[560px] overflow-y-auto">
-                        {pos.displayProducts.map((product) => {
-                            const variants = Array.isArray(product.variants)
-                                ? product.variants
-                                : [];
-                            const hasVariants = variants.length > 0;
-                            const isExpanded = expandedProductIds[product.id] ?? false;
+                <div className="max-h-[560px] overflow-y-auto">
+                    {pos.displayProducts.map((product) => {
+                        const variants = Array.isArray(product.variants)
+                            ? product.variants
+                            : [];
+                        const hasVariants = variants.length > 0;
+                        const isExpanded = expandedProductIds[product.id] ?? false;
 
-                            if (hasVariants) {
-                                return (
-                                    <div
-                                        key={product.id}
-                                        className="border-b border-[#EFE7F4] last:border-0"
-                                    >
-                                        <div
-                                            className={`${productGridClass} min-h-[82px] items-center px-5 hover:bg-[#FFFCF7]`}
-                                        >
-                                            <div className="min-w-0 pr-4">
-                                                <div className="flex items-start gap-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => toggleProduct(product.id)}
-                                                        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#E6DDF0] bg-white text-[#2B174C] hover:bg-[#F7F1FF]"
-                                                        title={
-                                                            isExpanded
-                                                                ? "Hide variants"
-                                                                : "Show variants"
-                                                        }
-                                                    >
-                                                        {isExpanded ? (
-                                                            <ChevronDown size={17} />
-                                                        ) : (
-                                                            <ChevronRight size={17} />
-                                                        )}
-                                                    </button>
-
-                                                    <div className="min-w-0">
-                                                        <p className="truncate font-serif text-base font-semibold text-[#1A1220]">
-                                                            {product.name}
-                                                        </p>
-
-                                                        <p className="mt-0.5 text-xs font-medium text-[#806A8C]">
-                                                            Click to view {variants.length} variant
-                                                            {variants.length !== 1 ? "s" : ""}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="truncate text-center text-sm text-[#5F4E75]">
-                                                {product.category || "Uncategorized"}
-                                            </div>
-
-                                            <div className="text-center text-sm font-semibold text-[#9B8AAA]" />
-
-                                            <div className="text-center font-serif text-sm font-semibold text-[#9B8AAA]" />
-
-                                            <div className="flex justify-center">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => toggleProduct(product.id)}
-                                                    className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-lg bg-[#F1E9FF] px-4 py-2 text-xs font-semibold text-[#4E2C66] hover:bg-[#E6DDF0]"
-                                                >
-                                                    Choose Variant
-                                                    {isExpanded ? (
-                                                        <ChevronDown size={14} />
-                                                    ) : (
-                                                        <ChevronRight size={14} />
-                                                    )}
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {isExpanded && (
-                                            <div className="overflow-hidden">
-                                                {variants.map((variant, index) => {
-                                                    const key = getVariantKey(
-                                                        product.id,
-                                                        variant.id
-                                                    );
-                                                    const status = getStockStatus(
-                                                        Number(variant.stock || 0),
-                                                        Number(variant.alertLevel || 0)
-                                                    );
-                                                    const isFirstVariant = index === 0;
-                                                    const isLastVariant =
-                                                        index === variants.length - 1;
-
-                                                    return (
-                                                        <div
-                                                            key={key}
-                                                            className={`${productGridClass} min-h-[78px] items-center border-b border-[#E6DDF0] bg-[#F7F1FF] px-5 last:border-0`}
-                                                        >
-                                                            <div className="min-w-0 pr-4">
-                                                                <div className="ml-8 flex items-center gap-3">
-                                                                    <div className="relative flex h-10 w-5 shrink-0 justify-center">
-                                                                        {!isFirstVariant && (
-                                                                            <span className="absolute -top-5 h-8 border-l border-dashed border-[#B99DDB]" />
-                                                                        )}
-
-                                                                        {!isLastVariant && (
-                                                                            <span className="absolute top-5 h-10 border-l border-dashed border-[#B99DDB]" />
-                                                                        )}
-
-                                                                        <span className="relative z-10 mt-[15px] h-2.5 w-2.5 rounded-full bg-[#9B6BD3]" />
-                                                                    </div>
-
-                                                                    <div className="min-w-0">
-                                                                        <p className="truncate font-serif text-sm font-semibold text-[#2B174C]">
-                                                                            {variant.name || "Variant"}
-                                                                        </p>
-
-                                                                        <p
-                                                                            className={`mt-0.5 text-xs font-semibold ${status.className}`}
-                                                                        >
-                                                                            {status.label}
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="truncate text-center text-xs text-[#9B8AAA]">
-                                                                —
-                                                            </div>
-
-                                                            <div className="text-center text-sm font-semibold text-[#1A1220]">
-                                                                {variant.stock}
-                                                            </div>
-
-                                                            <div className="text-center font-serif text-sm font-semibold text-[#1A1220]">
-                                                                {peso(Number(variant.salesPrice || 0))}
-                                                            </div>
-
-                                                            {renderQtyControls(
-                                                                key,
-                                                                Number(variant.stock || 0)
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            }
-
-                            const key = getProductKey(product.id);
-                            const status = getStockStatus(
-                                Number(product.stock || 0),
-                                Number(product.alertLevel || 0)
-                            );
-
+                        if (hasVariants) {
                             return (
                                 <div
                                     key={product.id}
-                                    className={`${productGridClass} min-h-[78px] items-center border-b border-[#EFE7F4] px-5 py-4 last:border-0 hover:bg-[#FFFCF7]`}
+                                    className="border-b border-[#EFE7F4] last:border-0"
                                 >
-                                    <div className="min-w-0 pl-9 pr-4">
-                                        <p className="truncate font-serif text-base font-semibold text-[#1A1220]">
-                                            {product.name}
-                                        </p>
+                                    <div
+                                        className={`${productGridClass} min-h-[78px] items-center px-5 transition hover:bg-[#FFFCF7]`}
+                                    >
+                                        <div className="min-w-0 pr-4">
+                                            <div className="flex items-start gap-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleProduct(product.id)}
+                                                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-[#2B174C] hover:text-[#5F4E75]"
+                                                    title={
+                                                        isExpanded
+                                                            ? "Hide variants"
+                                                            : "Show variants"
+                                                    }
+                                                >
+                                                    {isExpanded ? (
+                                                        <ChevronDown size={17} />
+                                                    ) : (
+                                                        <ChevronRight size={17} />
+                                                    )}
+                                                </button>
 
-                                        <p
-                                            className={`mt-0.5 text-xs font-semibold ${status.className}`}
-                                        >
-                                            {status.label}
-                                        </p>
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-semibold text-[#1A1220]">
+                                                        {product.name}
+                                                    </p>
+
+                                                    <p className="mt-0.5 text-xs font-medium text-[#806A8C]">
+                                                        Click to view {variants.length} variant
+                                                        {variants.length !== 1 ? "s" : ""}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="truncate text-center text-sm text-[#5F4E75]">
+                                            {product.category || "Uncategorized"}
+                                        </div>
+
+                                        <div className="text-center text-sm font-semibold text-[#9B8AAA]" />
+
+                                        <div className="text-center text-sm font-semibold text-[#9B8AAA]" />
+
+                                        <div className="flex justify-center">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleProduct(product.id)}
+                                                className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-xl border border-[#E6DDF0] bg-white px-3 py-2 text-xs font-semibold text-[#2B174C] shadow-sm hover:bg-[#F7F1FF]"
+                                            >
+                                                Choose Variant
+                                                {isExpanded ? (
+                                                    <ChevronDown size={14} />
+                                                ) : (
+                                                    <ChevronRight size={14} />
+                                                )}
+                                            </button>
+                                        </div>
                                     </div>
 
-                                    <div className="truncate text-center text-sm text-[#5F4E75]">
-                                        {product.category || "Uncategorized"}
-                                    </div>
+                                    {isExpanded && (
+                                        <div className="overflow-hidden">
+                                            {variants.map((variant, index) => {
+                                                const key = getVariantKey(
+                                                    product.id,
+                                                    variant.id
+                                                );
+                                                const status = getStockStatus(
+                                                    Number(variant.stock || 0),
+                                                    Number(variant.alertLevel || 0)
+                                                );
+                                                const isFirstVariant = index === 0;
+                                                const isLastVariant =
+                                                    index === variants.length - 1;
 
-                                    <div className="text-center text-sm font-semibold text-[#1A1220]">
-                                        {product.stock}
-                                    </div>
+                                                return (
+                                                    <div
+                                                        key={key}
+                                                        className={`${productGridClass} min-h-[78px] items-center border-b border-[#EFE7F4] bg-[#FCF9FF] px-5 last:border-0`}
+                                                    >
+                                                        <div className="min-w-0 pr-4">
+                                                            <div className="ml-8 flex items-center gap-3">
+                                                                <div className="relative flex h-10 w-5 shrink-0 justify-center">
+                                                                    {!isFirstVariant && (
+                                                                        <span className="absolute -top-5 h-8 border-l border-dashed border-[#B99DDB]" />
+                                                                    )}
 
-                                    <div className="text-center font-serif text-sm font-semibold text-[#1A1220]">
-                                        {peso(Number(product.salesPrice || 0))}
-                                    </div>
+                                                                    {!isLastVariant && (
+                                                                        <span className="absolute top-5 h-10 border-l border-dashed border-[#B99DDB]" />
+                                                                    )}
 
-                                    {renderQtyControls(key, Number(product.stock || 0))}
+                                                                    <span className="relative z-10 mt-[15px] h-2.5 w-2.5 rounded-full bg-[#9B6BD3]" />
+                                                                </div>
+
+                                                                <div className="min-w-0">
+                                                                    <p className="truncate text-sm font-semibold text-[#2B174C]">
+                                                                        {variant.name || "Variant"}
+                                                                    </p>
+
+                                                                    <p
+                                                                        className={`mt-0.5 text-xs font-semibold ${status.className}`}
+                                                                    >
+                                                                        {status.label}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="truncate text-center text-xs text-[#9B8AAA]">
+                                                            —
+                                                        </div>
+
+                                                        <div className="text-center text-sm font-semibold text-[#1A1220]">
+                                                            {variant.stock}
+                                                        </div>
+
+                                                        <div className="text-center text-sm font-semibold text-[#1A1220]">
+                                                            {peso(Number(variant.salesPrice || 0))}
+                                                        </div>
+
+                                                        {renderQtyControls(
+                                                            key,
+                                                            Number(variant.stock || 0)
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             );
-                        })}
-                    </div>
+                        }
+
+                        const key = getProductKey(product.id);
+                        const status = getStockStatus(
+                            Number(product.stock || 0),
+                            Number(product.alertLevel || 0)
+                        );
+
+                        return (
+                            <div
+                                key={product.id}
+                                className={`${productGridClass} min-h-[78px] items-center border-b border-[#EFE7F4] px-5 py-4 transition last:border-0 hover:bg-[#FFFCF7]`}
+                            >
+                                <div className="min-w-0 pl-9 pr-4">
+                                    <p className="truncate text-sm font-semibold text-[#1A1220]">
+                                        {product.name}
+                                    </p>
+
+                                    <p
+                                        className={`mt-0.5 text-xs font-semibold ${status.className}`}
+                                    >
+                                        {status.label}
+                                    </p>
+                                </div>
+
+                                <div className="truncate text-center text-sm text-[#5F4E75]">
+                                    {product.category || "Uncategorized"}
+                                </div>
+
+                                <div className="text-center text-sm font-semibold text-[#1A1220]">
+                                    {product.stock}
+                                </div>
+
+                                <div className="text-center text-sm font-semibold text-[#1A1220]">
+                                    {peso(Number(product.salesPrice || 0))}
+                                </div>
+
+                                {renderQtyControls(key, Number(product.stock || 0))}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
+        </div>
     );
 }
 
@@ -417,7 +417,7 @@ function CurrentOrderPanel({ pos }: { pos: UsePOSReturn }) {
     };
 
     return (
-        <aside className="min-w-0 rounded-[22px] border border-[#E6DDF0] bg-white p-5 shadow-sm xl:sticky xl:top-24 xl:self-start">{isMounted &&
+        <aside className="min-w-0 rounded-[14px] border border-[#E6DDF0] bg-white p-3 shadow-sm xl:sticky xl:top-24 xl:self-start">{isMounted &&
             showSuccessDialog &&
             createPortal(
                 <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/35 px-4 backdrop-blur-lg">
@@ -434,8 +434,8 @@ function CurrentOrderPanel({ pos }: { pos: UsePOSReturn }) {
                 document.body
             )}
 
-            <div className="mb-5 flex items-center justify-between">
-                <h2 className="font-serif text-xl font-semibold text-[#1A1220]">
+            <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-[19px] font-bold text-[#1A1220]">
                     Current Order
                 </h2>
 
@@ -565,13 +565,13 @@ function CurrentOrderPanel({ pos }: { pos: UsePOSReturn }) {
                 </div>
             </div>
 
-            <div className="mt-5 border-t border-dashed border-[#D6CBE0] pt-5">
-                <div className="mb-4 flex items-center justify-between">
-                    <span className="font-serif text-xl font-semibold text-[#1A1220]">
+            <div className="mt-4 border-t border-dashed border-[#D6CBE0] pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                    <span className="text-[19px] font-bold text-[#1A1220]">
                         Total
                     </span>
 
-                    <span className="font-serif text-2xl font-semibold text-[#1A1220]">
+                    <span className="text-[19px] font-bold text-[#1A1220]">
                         {peso(pos.total)}
                     </span>
                 </div>
@@ -587,7 +587,7 @@ function CurrentOrderPanel({ pos }: { pos: UsePOSReturn }) {
                             onChange={(e) => pos.setPayment(e.target.value)}
                             inputMode="decimal"
                             placeholder="0.00"
-                            className="h-12 w-full rounded-xl border border-[#E3D8EA] px-4 text-sm text-[#1A1220] placeholder:text-[#9B8AAA] focus:border-[#2B174C] focus:outline-none"
+                            className="w-full rounded-xl border border-[#E3D8EA] bg-white px-4 py-2.5 text-sm text-[#1A1220] placeholder:text-[#9B8AAA] shadow-sm focus:border-[#2B174C] focus:outline-none"
                         />
                     </div>
 
@@ -604,7 +604,7 @@ function CurrentOrderPanel({ pos }: { pos: UsePOSReturn }) {
                     <button
                         onClick={() => void handlePlaceOrderClick()}
                         disabled={pos.cartItems.length === 0}
-                        className="flex h-14 w-full items-center justify-center gap-3 rounded-xl bg-[#4D16C9] text-base font-semibold text-white shadow-sm hover:bg-[#381094] disabled:cursor-not-allowed disabled:opacity-40"
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2B174C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#1B0D31] disabled:cursor-not-allowed disabled:opacity-40"
                         type="button"
                     >
                         <ShoppingBag size={20} />

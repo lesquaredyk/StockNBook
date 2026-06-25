@@ -1,11 +1,13 @@
 "use client";
 
+import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
-    getToken, peso, formatText,
+    getToken, peso, formatText, getPackageCategory,
+    PACKAGE_CATEGORY_OPTIONS,
     Card, CardHeader, PageHeader, PackageCard, EmptyState,
     PackageFormModal, usePackageForm,
-    type PackageItem, type Product,
+    type PackageCategory, type PackageItem, type Product,
 } from "./_shared";
 
 export default function ManagerPackages() {
@@ -16,6 +18,7 @@ export default function ManagerPackages() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
+    const [selectedCategory, setSelectedCategory] = useState<PackageCategory>("All");
     const [error, setError] = useState("");
 
     const form = usePackageForm(storeId, branchId, async () => {
@@ -87,42 +90,89 @@ export default function ManagerPackages() {
     }
 
     const filteredPackages = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        return packages.filter(
-            (pkg) =>
-                pkg.name.toLowerCase().includes(q) ||
-                (pkg.description || "").toLowerCase().includes(q) ||
-                (pkg.duration || "").toLowerCase().includes(q) ||
-                pkg.status.toLowerCase().includes(q)
-        );
-    }, [packages, search]);
+        const query = search.trim().toLowerCase();
+
+        return packages.filter((pkg) => {
+            const matchesSearch =
+                !query ||
+                pkg.name.toLowerCase().includes(query) ||
+                (pkg.description || "").toLowerCase().includes(query) ||
+                (pkg.duration || "").toLowerCase().includes(query) ||
+                pkg.status.toLowerCase().includes(query);
+
+            const matchesCategory =
+                selectedCategory === "All" ||
+                getPackageCategory(pkg) === selectedCategory;
+
+            return matchesSearch && matchesCategory;
+        });
+    }, [packages, search, selectedCategory]);
 
     return (
         <>
             <PageHeader title="Packages" badge={branchName} />
 
-            <section className="p-5">
+            <section className="px-6 py-4 font-sans">
                 <div className="space-y-3">
                     <div className="flex gap-3">
-                        <input
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search packages..."
-                            className="h-[42px] flex-1 rounded-[10px] border border-[#EBE4F0] bg-white px-4 text-[12px] text-[#1A1220] placeholder:text-[#9B8EA8] outline-none transition focus:border-[#2D1B4E]"
-                        />
+                        <div className="relative flex-1">
+                            <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9B8AAA]" />
+                            <input
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                placeholder="Search packages..."
+                                className="w-full rounded-xl border border-[#E3D8EA] bg-white px-4 py-2.5 pl-10 text-sm text-[#1A1220] outline-none shadow-sm placeholder:text-[#9B8AAA] focus:border-[#2B174C]"
+                            />
+                        </div>
                         <button
                             onClick={form.openAdd}
-                            className="h-[42px] rounded-[10px] bg-[#2D1B4E] px-5 text-[12px] font-semibold text-white transition hover:bg-[#3D2560]"
+                            className="inline-flex items-center rounded-xl bg-[#2B174C] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1B0D31]"
                         >
                             + Add package
                         </button>
+                    </div>
+
+                    <div className="rounded-[14px] border border-[#E6DDF0] bg-white p-3 shadow-sm">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                            <h2 className="text-sm font-bold text-[#1A1220]">
+                                Categories
+                            </h2>
+
+                            <span className="shrink-0 text-xs font-semibold text-[#806A8C]">
+                                {PACKAGE_CATEGORY_OPTIONS.length - 1} categories
+                            </span>
+                        </div>
+
+                        <div className="overflow-x-auto pb-1">
+                            <div className="flex min-w-max gap-2">
+                                {PACKAGE_CATEGORY_OPTIONS.map((category) => {
+                                    const selected = selectedCategory === category;
+
+                                    return (
+                                        <button
+                                            key={category}
+                                            type="button"
+                                            onClick={() => setSelectedCategory(category)}
+                                            aria-pressed={selected}
+                                            className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
+                                                selected
+                                                    ? "bg-[#2B174C] text-white shadow-sm"
+                                                    : "border border-[#E6DDF0] bg-white text-[#5F4E75] hover:bg-[#F7F1FF]"
+                                            }`}
+                                        >
+                                            {category}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
 
                     <Card className="min-h-[340px]">
                         <CardHeader title="Branch Package List" action={`${filteredPackages.length} packages`} />
 
                         {error && (
-                            <div className="mb-3 rounded-[9px] border border-[#F3C4C4] bg-[#FFF2F2] px-3 py-2 text-[11px] font-medium text-[#9B1C1C]">
+                            <div className="mb-3 rounded-xl border border-[#F3C4C4] bg-[#FFF2F2] px-3 py-2.5 text-xs font-medium text-[#9B1C1C]">
                                 {error}
                             </div>
                         )}
@@ -132,7 +182,7 @@ export default function ManagerPackages() {
                         ) : filteredPackages.length === 0 ? (
                             <EmptyState title="No packages yet." detail="Create your first package using inventory items and discounts." />
                         ) : (
-                            <div className="grid grid-cols-[repeat(auto-fill,180px)] gap-2.5">
+                            <div className="grid grid-cols-[repeat(auto-fill,260px)] gap-4">
                                 {filteredPackages.map((pkg, index) => (
                                     <PackageCard
                                         key={pkg.id}
@@ -156,6 +206,10 @@ export default function ManagerPackages() {
                 submitting={form.submitting}
                 name={form.name} setName={form.setName}
                 description={form.description} setDescription={form.setDescription}
+                category={form.category} setCategory={form.setCategory}
+                coverImage={form.coverImage}
+                onCoverImageChange={form.handleCoverImageChange}
+                onRemoveCoverImage={form.removeCoverImage}
                 duration={form.duration} setDuration={form.setDuration}
                 status={form.status} setStatus={form.setStatus}
                 discountType={form.discountType} setDiscountType={form.setDiscountType}
