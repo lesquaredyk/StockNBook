@@ -3,12 +3,91 @@
 import { useState } from "react";
 import {
     ArrowRight,
+    Check,
     Package,
     Sparkles,
 } from "lucide-react";
 import AuthModal from "./AuthModal";
 
 type AuthMode = "login" | "signup" | null;
+
+type PricingPlan = {
+    name: string;
+    label: string;
+    price: string;
+    period: string;
+    description: string;
+    features: string[];
+    buttonText: string;
+    highlighted?: boolean;
+};
+
+const pricingPlans: PricingPlan[] = [
+    {
+        name: "Starter",
+        label: "Free",
+        price: "₱0",
+        period: "/month",
+        description:
+            "For small or starting party supply businesses exploring basic booking and inventory tools.",
+        features: [
+            "Basic booking management",
+            "Basic inventory management",
+            "Product catalog",
+            "Simple POS transactions",
+            "QR code generation for bookings",
+            "Up to 50 inventory items",
+            "Up to 20 bookings per month",
+            "Single admin account",
+            "Basic dashboard overview",
+        ],
+        buttonText: "Start for free",
+    },
+    {
+        name: "Business",
+        label: "Standard",
+        price: "₱499",
+        period: "/month",
+        description:
+            "For growing small-to-medium party businesses with regular booking operations.",
+        features: [
+            "Everything in Starter",
+            "Unlimited bookings",
+            "Up to 500 inventory items",
+            "Sales and booking analytics",
+            "Downloadable reports",
+            "Booking calendar management",
+            "Transaction history",
+            "Low-stock notifications",
+            "Up to 3 staff accounts",
+            "Priority email support",
+        ],
+        buttonText: "Start free trial",
+        highlighted: true,
+    },
+    {
+        name: "Enterprise",
+        label: "Premium",
+        price: "₱1,299",
+        period: "/month",
+        description:
+            "For larger event suppliers and businesses that need advanced operational control.",
+        features: [
+            "Everything in Business",
+            "Unlimited inventory items",
+            "Unlimited staff accounts",
+            "Advanced analytics and business insights",
+            "Custom branding and logo upload",
+            "QR inventory scanning",
+            "Advanced POS features",
+            "Sales forecasting",
+            "Multi-role account control",
+            "Data backup and extended history",
+            "Priority customer support",
+        ],
+        buttonText: "Contact sales",
+    },
+];
 
 export default function LandingPage({
                                         onSignupSuccess,
@@ -24,15 +103,24 @@ export default function LandingPage({
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#2D1B4E] text-[#C9951A]">
                         <Package className="h-5 w-5" />
                     </div>
+
                     <span className="text-lg font-semibold tracking-tight">
-            <span className="text-[#2D1B4E]">Stock</span>NBook
-          </span>
+                        <span className="text-[#2D1B4E]">Stock</span>NBook
+                    </span>
                 </div>
 
                 <div className="hidden items-center gap-8 text-sm text-[#7A6E88] md:flex">
-                    <span>Features</span>
-                    <span>Pricing</span>
-                    <span>About</span>
+                    <a href="#features" className="transition hover:text-[#2D1B4E]">
+                        Features
+                    </a>
+
+                    <a href="#pricing" className="transition hover:text-[#2D1B4E]">
+                        Pricing
+                    </a>
+
+                    <a href="#how-it-works" className="transition hover:text-[#2D1B4E]">
+                        About
+                    </a>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -92,9 +180,10 @@ export default function LandingPage({
                         <div className="h-2.5 w-2.5 rounded-full bg-red-300" />
                         <div className="h-2.5 w-2.5 rounded-full bg-yellow-300" />
                         <div className="h-2.5 w-2.5 rounded-full bg-green-300" />
+
                         <span className="ml-3 text-xs text-[#7A6E88]">
-              StockNBook — Dashboard
-            </span>
+                            StockNBook — Dashboard
+                        </span>
                     </div>
 
                     <div className="p-5">
@@ -115,12 +204,14 @@ export default function LandingPage({
                                 info="May 18 · ₱12,000"
                                 status="Confirmed"
                             />
+
                             <EventRow
                                 color="#C9951A"
                                 title="Cruz Debut"
                                 info="May 22 · ₱8,500"
                                 status="Pending"
                             />
+
                             <EventRow
                                 color="#F0997B"
                                 title="Santos Birthday"
@@ -141,7 +232,7 @@ export default function LandingPage({
                 </div>
             </section>
 
-            <section className="bg-white px-6 py-20 lg:px-10">
+            <section id="features" className="bg-white px-6 py-20 lg:px-10">
                 <div className="mx-auto max-w-6xl">
                     <p className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-[#C9951A]">
                         What&#39;s inside
@@ -162,26 +253,31 @@ export default function LandingPage({
                             title="Smart bookings"
                             desc="Calendar view, booking statuses, and auto-reminders for every event."
                         />
+
                         <FeatureCard
                             number="02"
                             title="Package builder"
                             desc="Create styled packages with pricing tiers, inclusions, and add-ons."
                         />
+
                         <FeatureCard
                             number="03"
                             title="Inventory control"
-                            desc="Real-time tracking of all your party supplies."
+                            desc="Monitor party supplies, product quantities, and restock alerts."
                         />
+
                         <FeatureCard
                             number="04"
                             title="Sales / POS"
                             desc="Quick checkout for walk-in and on-site event sales."
                         />
+
                         <FeatureCard
                             number="05"
                             title="Revenue forecasting"
                             desc="See projected income by month and season."
                         />
+
                         <FeatureCard
                             number="06"
                             title="Booking link"
@@ -191,7 +287,12 @@ export default function LandingPage({
                 </div>
             </section>
 
-            <section className="bg-[#2D1B4E] px-6 py-20 text-white lg:px-10">
+            <PricingSection onSelectPlan={() => setAuthMode("signup")} />
+
+            <section
+                id="how-it-works"
+                className="bg-[#2D1B4E] px-6 py-20 text-white lg:px-10"
+            >
                 <p className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-[#F5E8C0]">
                     How it works
                 </p>
@@ -206,11 +307,13 @@ export default function LandingPage({
                         title="Add packages and inventory"
                         desc="Set up your event packages, pricing tiers, and party supplies."
                     />
+
                     <StepCard
                         number="02"
                         title="Share your booking link"
                         desc="Clients browse, pick a package, and book directly."
                     />
+
                     <StepCard
                         number="03"
                         title="Track, earn, and grow"
@@ -224,6 +327,7 @@ export default function LandingPage({
                     <h2 className="font-serif text-3xl">
                         Ready to run your business properly?
                     </h2>
+
                     <p className="mt-2 text-sm text-[#7A6E88]">
                         Join Filipino event stylists already using StockNBook.
                     </p>
@@ -252,6 +356,121 @@ export default function LandingPage({
     );
 }
 
+function PricingSection({
+                            onSelectPlan,
+                        }: {
+    onSelectPlan: () => void;
+}) {
+    return (
+        <section id="pricing" className="bg-[#F8F5FF] px-6 py-20 lg:px-10">
+            <div className="mx-auto max-w-6xl">
+                <p className="text-center text-xs font-semibold uppercase tracking-[0.2em] text-[#C9951A]">
+                    Pricing
+                </p>
+
+                <h2 className="mt-3 text-center font-serif text-4xl text-[#1A1220]">
+                    Simple plans for growing event businesses
+                </h2>
+
+                <p className="mx-auto mt-3 max-w-xl text-center text-sm leading-6 text-[#7A6E88]">
+                    Start with the basic tools, then upgrade as your bookings,
+                    inventory, staff, and branch operations grow.
+                </p>
+
+                <div className="mt-12 grid items-stretch gap-6 lg:grid-cols-3">
+                    {pricingPlans.map((plan) => (
+                        <PricingCard
+                            key={plan.name}
+                            plan={plan}
+                            onSelectPlan={onSelectPlan}
+                        />
+                    ))}
+                </div>
+            </div>
+        </section>
+    );
+}
+
+function PricingCard({
+                         plan,
+                         onSelectPlan,
+                     }: {
+    plan: PricingPlan;
+    onSelectPlan: () => void;
+}) {
+    return (
+        <div
+            className={[
+                "relative flex h-full flex-col rounded-2xl border bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-xl",
+                plan.highlighted
+                    ? "border-[#2D1B4E] ring-2 ring-[#2D1B4E]"
+                    : "border-[#EBE4F0]",
+            ].join(" ")}
+        >
+            {plan.highlighted && (
+                <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#2D1B4E] px-4 py-1 text-xs font-semibold text-white shadow-md">
+                    Most popular
+                </div>
+            )}
+
+            <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7A6E88]">
+                    {plan.label}
+                </p>
+
+                <h3 className="mt-3 font-serif text-2xl font-semibold text-[#1A1220]">
+                    {plan.name}
+                </h3>
+
+                <div className="mt-5 flex items-end gap-1">
+                    <span className="font-serif text-4xl font-semibold tracking-tight text-[#1A1220]">
+                        {plan.price}
+                    </span>
+
+                    <span className="pb-1 text-sm text-[#7A6E88]">
+                        {plan.period}
+                    </span>
+                </div>
+
+                <p className="mt-4 min-h-[72px] text-sm leading-6 text-[#7A6E88]">
+                    {plan.description}
+                </p>
+            </div>
+
+            <div className="mt-7 border-t border-[#EBE4F0] pt-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#7A6E88]">
+                    Included features
+                </p>
+
+                <ul className="mt-4 space-y-2.5">
+                    {plan.features.map((feature) => (
+                        <li
+                            key={feature}
+                            className="flex gap-2 text-sm leading-5 text-[#3F354C]"
+                        >
+                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#C9951A]" />
+                            <span>{feature}</span>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+
+            <button
+                type="button"
+                onClick={onSelectPlan}
+                className={[
+                    "mt-auto h-11 w-full rounded-xl text-sm font-semibold transition",
+                    plan.highlighted
+                        ? "bg-[#2D1B4E] text-white hover:bg-[#3D2560]"
+                        : "border border-[#3D2560] bg-white text-[#2D1B4E] hover:bg-[#2D1B4E] hover:text-white",
+                ].join(" ")}
+            >
+                {plan.buttonText}
+            </button>
+        </div>
+    );
+}
+
 function MiniStat({
                       label,
                       value,
@@ -268,8 +487,14 @@ function MiniStat({
             <p className="text-xs uppercase tracking-widest text-[#7A6E88]">
                 {label}
             </p>
+
             <p className="mt-1 text-xl font-semibold">{value}</p>
-            <p className={`mt-1 text-xs ${danger ? "text-[#993C1D]" : "text-[#3B6D11]"}`}>
+
+            <p
+                className={`mt-1 text-xs ${
+                    danger ? "text-[#993C1D]" : "text-[#3B6D11]"
+                }`}
+            >
                 {note}
             </p>
         </div>
@@ -293,13 +518,15 @@ function EventRow({
                 className="h-10 w-1 rounded-full"
                 style={{ backgroundColor: color }}
             />
+
             <div className="flex-1">
                 <p className="text-sm font-semibold">{title}</p>
                 <p className="text-xs text-[#7A6E88]">{info}</p>
             </div>
+
             <span className="rounded-md bg-[#EEE8F8] px-3 py-1 text-xs font-medium text-[#3D2560]">
-        {status}
-      </span>
+                {status}
+            </span>
         </div>
     );
 }
@@ -349,4 +576,3 @@ function StepCard({
         </div>
     );
 }
-
