@@ -453,6 +453,45 @@ exports.handler = async (event) => {
     try {
         connection = await mysql.createConnection(dbConfig);
 
+        // ── PUBLIC: get_public_products for customer booking portal ─────────────
+        if (action === "get_public_products") {
+            const publicStoreId = Number(body.store_id || body.storeId);
+            const publicBranchId =
+                body.branch_id || body.branchId
+                    ? Number(body.branch_id || body.branchId)
+                    : null;
+
+            if (!Number.isInteger(publicStoreId) || publicStoreId <= 0) {
+                return badRequest(headers, "Missing or invalid store_id");
+            }
+
+            const storeExists = await ensureStoreExists(connection, publicStoreId);
+
+            if (!storeExists) {
+                return badRequest(headers, "Store account not found");
+            }
+
+            if (publicBranchId) {
+                const branchOk = await ensureBranchBelongsToStore(
+                    connection,
+                    publicBranchId,
+                    publicStoreId
+                );
+
+                if (!branchOk) {
+                    return badRequest(headers, "Invalid branch for this store");
+                }
+            }
+
+            const products = await getProducts(
+                connection,
+                publicStoreId,
+                publicBranchId
+            );
+
+            return jsonResponse(200, headers, { products });
+        }
+
         const authHeader =
             event?.headers?.authorization ||
             event?.headers?.Authorization ||

@@ -49,6 +49,56 @@ function toNumber(value, fallback = 0) {
     return Number.isFinite(num) ? num : fallback;
 }
 
+function normalizePackageInclusions(value) {
+    const parsed = Array.isArray(value) ? value : safeParseJSON(value);
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+        .map((item) => {
+            const productId = Number(item.productId ?? item.product_id);
+            const rawVariantId = item.variantId ?? item.variant_id ?? null;
+            const variantId = rawVariantId ? Number(rawVariantId) : null;
+
+            const productName =
+                item.productName ||
+                item.name ||
+                item.item ||
+                "";
+
+            const variantName = item.variantName || "";
+
+            const inventoryKey =
+                item.inventoryKey ||
+                (variantId
+                    ? `product:${productId}:variant:${variantId}`
+                    : `product:${productId}:regular`);
+
+            const quantity = Number(item.quantity || 1);
+            const unitSalesPrice = Number(item.unitSalesPrice || 0);
+            const lineValue =
+                Number(item.lineValue) || unitSalesPrice * quantity;
+
+            if (!Number.isFinite(productId) || productId <= 0) {
+                return null;
+            }
+
+            return {
+                inventoryKey,
+                productId,
+                variantId,
+                productName,
+                variantName,
+                item: productName,
+                quantity,
+                unitSalesPrice,
+                lineValue,
+                availableStock: Number(item.availableStock || 0),
+            };
+        })
+        .filter(Boolean);
+}
+
 exports.handler = async (event) => {
     if (event.httpMethod === "OPTIONS") {
         return { statusCode: 200, headers, body: "" };
@@ -95,6 +145,8 @@ exports.handler = async (event) => {
                         down_payment_amount,
                         duration,
                         status,
+                        category,
+                        cover_image,
                         inclusions,
                         created_at,
                         updated_at
@@ -135,7 +187,7 @@ exports.handler = async (event) => {
             const packages = rows.map((pkg) => ({
                 ...pkg,
                 down_payment_amount: toNumber(pkg.down_payment_amount),
-                inclusions: safeParseJSON(pkg.inclusions),
+                inclusions: normalizePackageInclusions(pkg.inclusions),
             }));
 
             return {
@@ -223,7 +275,7 @@ exports.handler = async (event) => {
             const pkg = {
                 ...rows[0],
                 down_payment_amount: toNumber(rows[0].down_payment_amount),
-                inclusions: safeParseJSON(rows[0].inclusions),
+                inclusions: normalizePackageInclusions(rows[0].inclusions),
             };
 
             return {
@@ -242,6 +294,8 @@ exports.handler = async (event) => {
                 branch_id,
                 name,
                 description,
+                category = "Other",
+                cover_image = null,
                 original_value,
                 discount_type,
                 discount_value,
@@ -268,11 +322,7 @@ exports.handler = async (event) => {
                 throw new Error("down_payment_amount cannot exceed package_price");
 
             // Map inclusions to ensure each has productId, item name, and quantity
-            const mappedInclusions = (inclusions || []).map((i) => ({
-                productId: Number(i.productId),
-                item: i.name || i.item || "",
-                quantity: Number(i.quantity || 1),
-            }));
+            const mappedInclusions = normalizePackageInclusions(inclusions);
 
             const [result] = await connection.execute(
                 `
@@ -282,6 +332,8 @@ exports.handler = async (event) => {
                 branch_id,
                 name,
                 description,
+                category,
+                cover_image,
                 original_value,
                 discount_type,
                 discount_value,
@@ -291,13 +343,15 @@ exports.handler = async (event) => {
                 status,
                 inclusions
             )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `,
                 [
                     targetStoreId,
                     targetBranchId,
                     name,
                     description ?? null,
+                    category ?? "Other",
+                    cover_image ?? null,
                     toNumber(original_value),
                     discount_type ?? "amount",
                     toNumber(discount_value),
@@ -332,6 +386,8 @@ exports.handler = async (event) => {
                 branch_id,
                 name,
                 description,
+                category = "Other",
+                cover_image = null,
                 original_value,
                 discount_type,
                 discount_value,
@@ -360,11 +416,7 @@ exports.handler = async (event) => {
                 throw new Error("down_payment_amount cannot exceed package_price");
 
             // Map inclusions to ensure each has productId, item name, and quantity
-            const mappedInclusions = (inclusions || []).map((i) => ({
-                productId: Number(i.productId),
-                item: i.name || i.item || "",
-                quantity: Number(i.quantity || 1),
-            }));
+            const mappedInclusions = normalizePackageInclusions(inclusions);
 
             const [result] = await connection.execute(
                 `
@@ -378,6 +430,8 @@ exports.handler = async (event) => {
             down_payment_amount = ?,
             duration = ?,
             status = ?,
+            category = ?,
+            cover_image = ?,
             inclusions = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND branch_id = ?
@@ -392,6 +446,8 @@ exports.handler = async (event) => {
                     downPaymentAmount,
                     duration ?? null,
                     status,
+                    category ?? "Other",
+                    cover_image ?? null,
                     JSON.stringify(mappedInclusions),
                     packageId,
                     targetBranchId,
